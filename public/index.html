@@ -1,1 +1,563 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sổ Nhật Ký Công Việc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EDEAE2; --paper-dark:#E1DCCE; --card:#FBFAF6;
+    --ink:#232C29; --ink-soft:#63695F; --line:#C9C2AC;
+    --accent:#3D6B54; --accent-soft:#DCE7DD;
+    --gold:#AD7F35; --gold-soft:#F1E4C4;
+    --danger:#9C3D34; --danger-soft:#F1DEDA;
+    --radius:3px;
+    --font-display:'Source Serif 4', Georgia, serif;
+    --font-body:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);}
+  #app{min-height:100vh;}
+  .hidden{display:none !important;}
 
+  /* Login */
+  .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(35,44,41,0.035) 40px), var(--paper);}
+  .login-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:36px 32px;}
+  .eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;}
+  .title-lg{font-family:var(--font-display);font-size:26px;font-weight:600;margin:0 0 4px;}
+  .sub{font-size:13px;color:var(--ink-soft);margin:0 0 26px;line-height:1.5;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
+  .field select,.field input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;font-family:var(--font-body);font-size:14px;color:var(--ink);}
+  .field select:focus,.field input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
+  .btn{cursor:pointer;font-family:var(--font-body);font-size:14px;font-weight:500;border-radius:var(--radius);border:1px solid transparent;padding:10px 16px;}
+  .btn--primary{background:var(--accent);color:#fff;width:100%;}
+  .btn--primary:hover{background:#335a45;}
+  .btn--ghost{background:transparent;border-color:var(--line);color:var(--ink);}
+  .btn--ghost:hover{background:var(--paper-dark);}
+  .btn--danger{background:transparent;border-color:var(--danger);color:var(--danger);}
+  .btn--danger:hover{background:var(--danger-soft);}
+  .btn--sm{padding:6px 12px;font-size:13px;}
+  .login-hint{margin-top:18px;padding:12px 13px;background:var(--paper-dark);border-radius:var(--radius);font-family:var(--font-mono);font-size:11.5px;color:var(--ink-soft);line-height:1.6;}
+  .login-hint b{color:var(--ink);}
+  .error-msg{background:var(--danger-soft);color:var(--danger);border-radius:var(--radius);padding:9px 12px;font-size:13px;margin-bottom:14px;}
+  .ok-msg{background:var(--accent-soft);color:var(--accent);border-radius:var(--radius);padding:9px 12px;font-size:13px;margin-bottom:14px;}
+
+  /* Shell */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:18px 28px;border-bottom:1px solid var(--line);background:var(--card);}
+  .brand{display:flex;align-items:center;gap:14px;}
+  .stamp{width:52px;height:52px;border:2px solid var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-8deg);flex-shrink:0;}
+  .stamp-inner{font-family:var(--font-mono);font-size:9px;color:var(--accent);text-align:center;line-height:1.2;}
+  .brand-title{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0;}
+  .brand-sub{font-size:12px;color:var(--ink-soft);margin:2px 0 0;}
+  .user-area{display:flex;align-items:center;gap:10px;}
+  .user-chip{text-align:right;}
+  .user-name{font-size:14px;font-weight:600;}
+  .user-title{font-size:12px;color:var(--ink-soft);}
+  .role-tag{display:inline-block;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:2px;margin-top:3px;}
+  .role-tag--nhan_vien{background:var(--accent-soft);color:var(--accent);}
+  .role-tag--truong_pho{background:var(--gold-soft);color:var(--gold);}
+  .role-tag--bgd{background:#233c2c;color:#F1E4C4;}
+  .tabs{display:flex;gap:4px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--card);overflow-x:auto;}
+  .tab{padding:12px 16px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab:hover:not(.active){color:var(--ink);}
+  .main{padding:26px 28px 60px;max-width:1080px;margin:0 auto;}
+
+  /* My log */
+  .my-log-layout{display:grid;grid-template-columns:190px 1fr;gap:22px;align-items:start;}
+  .day-list{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card);}
+  .day-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);color:var(--ink-soft);}
+  .day-item:last-child{border-bottom:none;}
+  .day-item:hover{background:var(--paper-dark);}
+  .day-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .day-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-left:8px;}
+  .session-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+  .session-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .session-title{font-family:var(--font-display);font-size:17px;font-weight:600;}
+  .session-cap{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);}
+  .session-cap.over{color:var(--danger);font-weight:600;}
+  .entry-row{display:grid;grid-template-columns:1fr 100px 34px;gap:8px;margin-bottom:8px;align-items:center;}
+  .entry-row input{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;font-family:var(--font-body);}
+  .entry-remove{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:var(--radius);cursor:pointer;color:var(--danger);font-size:16px;line-height:1;}
+  .entry-remove:hover{background:var(--danger-soft);}
+  .entry-add-row{display:grid;grid-template-columns:1fr 100px 80px;gap:8px;margin-top:10px;}
+  .entry-add-row input{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;}
+  .empty-entries{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin-bottom:8px;}
+  .save-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:6px;}
+  .save-flash{font-size:12.5px;color:var(--accent);font-weight:500;}
+
+  /* Report / users */
+  .filters-bar{display:flex;gap:14px;align-items:flex-end;margin-bottom:18px;flex-wrap:wrap;}
+  .filters-bar .field{margin-bottom:0;min-width:170px;}
+  .data-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .data-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-family:var(--font-mono);font-weight:500;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--paper-dark);}
+  .data-table td{padding:12px 14px;font-size:13.5px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .data-table tr:last-child td{border-bottom:none;}
+  .emp-name{font-weight:600;}
+  .emp-dept{font-size:11.5px;color:var(--ink-soft);}
+  .cell-empty{color:var(--ink-soft);font-style:italic;}
+  .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:2px;background:var(--paper-dark);margin:1px 3px 1px 0;}
+  .toolbar-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .section-title{font-family:var(--font-display);font-size:20px;font-weight:600;margin:0;}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(35,44,41,0.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:20;}
+  .modal-card{width:100%;max-width:420px;background:var(--card);border-radius:var(--radius);padding:26px;border:1px solid var(--line);}
+  .modal-title{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0 0 16px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+
+  @media(max-width:720px){
+    .my-log-layout{grid-template-columns:1fr;}
+    .day-list{display:flex;overflow-x:auto;}
+    .day-item{border-bottom:none;border-right:1px solid var(--line);white-space:nowrap;}
+    .topbar{padding:16px;} .main{padding:18px 16px 50px;} .tabs{padding:0 16px;}
+    .data-table{display:block;overflow-x:auto;}
+    .entry-row,.entry-add-row{grid-template-columns:1fr 80px 34px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ============ Cấu hình & helper ============ */
+const SESSION_KEYS = ['morning','afternoon','overtime'];
+const SESSION_LABEL = {morning:'Buổi sáng', afternoon:'Buổi chiều', overtime:'Tăng ca'};
+const SESSION_CAP = {morning:240, afternoon:240, overtime:960};
+const ROLE_LABEL = {nhan_vien:'Nhân viên', truong_pho:'Trưởng/Phó phòng', bgd:'Ban giám đốc'};
+
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function shiftDate(base,delta){ const d=new Date(base); d.setDate(d.getDate()+delta); return d; }
+function displayDate(iso){ const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtHM(min){ const h=Math.floor(min/60), m=min%60; return h>0 ? `${h}h${m>0?m+'p':''}` : `${m}p`; }
+
+async function api(path, options={}){
+  const headers = Object.assign({'Content-Type':'application/json'}, options.headers||{});
+  if(state.token) headers['Authorization'] = 'Bearer '+state.token;
+  const res = await fetch(path, Object.assign({}, options, {headers}));
+  let data=null;
+  try{ data = await res.json(); }catch(e){}
+  if(!res.ok) throw new Error((data && data.error) || 'Đã xảy ra lỗi, vui lòng thử lại.');
+  return data;
+}
+
+/* ============ Trạng thái ============ */
+const state = {
+  token: localStorage.getItem('nkcv_token') || null,
+  user: JSON.parse(localStorage.getItem('nkcv_user') || 'null'),
+  loginError:'', loginBusy:false,
+  tab:'my-log',
+  myDate: todayISO(),
+  myEntries: {morning:[], afternoon:[], overtime:[]},
+  myFlash:'', myLoading:false,
+  recentDays: [],
+  reportDate: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false,
+  users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
+  pwModalOpen:false, pwError:'', pwOk:false
+};
+
+const app = document.getElementById('app');
+
+/* ============ Render root ============ */
+function render(){
+  if(!state.token || !state.user){ renderLogin(); return; }
+  renderShell();
+}
+
+/* ============ Login ============ */
+function renderLogin(){
+  app.innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <p class="eyebrow">Sổ nhật ký công việc</p>
+        <h1 class="title-lg">Đăng nhập</h1>
+        <p class="sub">Ghi nhận công việc hằng ngày của toàn công ty.</p>
+        ${state.loginError ? `<div class="error-msg">${esc(state.loginError)}</div>` : ''}
+        <div class="field"><label for="li-user">Tên đăng nhập</label><input id="li-user" type="text" autocomplete="username" /></div>
+        <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" type="password" autocomplete="current-password" /></div>
+        <button class="btn btn--primary" id="btn-login" ${state.loginBusy?'disabled':''}>${state.loginBusy?'Đang đăng nhập...':'Đăng nhập'}</button>
+        <div class="login-hint">Tài khoản quản trị mặc định (tạo tự động lần đầu chạy server): <b>admin / admin123</b><br>Hãy đổi mật khẩu ngay sau khi đăng nhập.</div>
+      </div>
+    </div>`;
+  document.getElementById('btn-login').addEventListener('click', doLogin);
+  document.getElementById('li-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+}
+
+async function doLogin(){
+  const username = document.getElementById('li-user').value.trim();
+  const password = document.getElementById('li-pass').value;
+  if(!username || !password){ state.loginError='Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.'; render(); return; }
+  state.loginBusy = true; render();
+  try{
+    const data = await api('/api/login', {method:'POST', body: JSON.stringify({username,password})});
+    state.token = data.token; state.user = data.user;
+    localStorage.setItem('nkcv_token', state.token);
+    localStorage.setItem('nkcv_user', JSON.stringify(state.user));
+    state.loginError=''; state.loginBusy=false; state.tab='my-log';
+    await bootAfterLogin();
+  }catch(e){
+    state.loginBusy=false; state.loginError = e.message; render();
+  }
+}
+
+function doLogout(){
+  state.token=null; state.user=null;
+  localStorage.removeItem('nkcv_token'); localStorage.removeItem('nkcv_user');
+  render();
+}
+
+async function bootAfterLogin(){
+  await Promise.all([loadMyLog(state.myDate), loadRecentDays()]);
+  render();
+}
+
+/* ============ Shell ============ */
+function renderShell(){
+  const u = state.user;
+  const canSeeReport = u.role !== 'nhan_vien';
+  const canManageUsers = u.role === 'bgd';
+
+  app.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <div class="stamp"><div class="stamp-inner">SỔ<br>NHẬT KÝ</div></div>
+        <div><p class="brand-title">Sổ Nhật Ký Công Việc</p><p class="brand-sub">${esc(u.department || 'Ban giám đốc')}</p></div>
+      </div>
+      <div class="user-area">
+        <div class="user-chip">
+          <div class="user-name">${esc(u.fullname)}</div>
+          <span class="role-tag role-tag--${u.role}">${ROLE_LABEL[u.role]}</span>
+        </div>
+        <button class="btn btn--ghost btn--sm" id="btn-pw">Đổi mật khẩu</button>
+        <button class="btn btn--ghost btn--sm" id="btn-logout">Đăng xuất</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log">Nhật ký của tôi</div>
+      ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report">Báo cáo</div>` : ''}
+      ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users">Quản lý người dùng</div>` : ''}
+    </div>
+    <div class="main" id="main"></div>
+    ${state.pwModalOpen ? renderPasswordModal() : ''}
+    ${state.userModal ? renderUserModal() : ''}
+  `;
+  document.getElementById('btn-logout').addEventListener('click', doLogout);
+  document.getElementById('btn-pw').addEventListener('click', ()=>{ state.pwModalOpen=true; state.pwError=''; state.pwOk=false; render(); });
+  document.querySelectorAll('.tab').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      state.tab = el.dataset.tab;
+      if(state.tab==='report'){ state.reportLoading=true; render(); await loadReport(); }
+      else if(state.tab==='users'){ await loadUsers(); }
+      render();
+    });
+  });
+
+  if(state.tab==='my-log') renderMyLog();
+  else if(state.tab==='report') renderReport();
+  else if(state.tab==='users') renderUsers();
+
+  bindModalEvents();
+}
+
+/* ============ Tab: Nhật ký của tôi ============ */
+async function loadMyLog(date){
+  state.myLoading = true;
+  try{
+    const data = await api('/api/logs/'+date);
+    state.myEntries = { morning: data.morning||[], afternoon: data.afternoon||[], overtime: data.overtime||[] };
+  }catch(e){ state.myEntries = {morning:[],afternoon:[],overtime:[]}; }
+  state.myLoading = false;
+}
+
+async function loadRecentDays(){
+  try{
+    const data = await api('/api/logs?limit=30');
+    const withData = new Set(data.logs.filter(l => (l.morning.length+l.afternoon.length+l.overtime.length)>0).map(l=>l.date));
+    const days=[];
+    for(let i=0;i<7;i++){ const iso = ymd(shiftDate(new Date(),-i)); days.push({date:iso, has: withData.has(iso)}); }
+    state.recentDays = days;
+  }catch(e){ state.recentDays=[]; }
+}
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+function renderMyLog(){
+  const main = document.getElementById('main');
+  const today = todayISO();
+
+  main.innerHTML = `
+    <div class="my-log-layout">
+      <div class="day-list">
+        ${state.recentDays.map(d=>`
+          <div class="day-item ${d.date===state.myDate?'active':''}" data-date="${d.date}">
+            <span>${d.date===today?'Hôm nay':displayDate(d.date)}</span>${d.has?'<span class="day-dot"></span>':''}
+          </div>`).join('')}
+      </div>
+      <div>
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+          <span style="font-family:var(--font-display);font-size:20px;font-weight:600;">${state.myDate===today?'Hôm nay':displayDate(state.myDate)}</span>
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);">${displayDate(state.myDate)}</span>
+        </div>
+        ${SESSION_KEYS.map(sk=>renderSessionCard(sk)).join('')}
+        <div class="save-bar">
+          <span class="save-flash">${state.myFlash}</span>
+          <button class="btn btn--primary" style="width:auto;" id="btn-save-log">Lưu nhật ký</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll('.day-item').forEach(el=>{
+    el.addEventListener('click', async ()=>{ state.myDate = el.dataset.date; state.myFlash=''; await loadMyLog(state.myDate); render(); });
+  });
+  document.getElementById('btn-save-log').addEventListener('click', saveMyLog);
+  bindSessionEvents();
+}
+
+function renderSessionCard(sk){
+  const entries = state.myEntries[sk] || [];
+  const total = entries.reduce((s,e)=>s+(Number(e.minutes)||0),0);
+  const cap = SESSION_CAP[sk];
+  return `
+    <div class="session-card" data-session="${sk}">
+      <div class="session-head">
+        <span class="session-title">${SESSION_LABEL[sk]}</span>
+        <span class="session-cap ${total>cap?'over':''}">${fmtHM(total)} / tối đa ${fmtHM(cap)}</span>
+      </div>
+      ${entries.length===0 ? `<div class="empty-entries">Chưa có mục nào.</div>` : entries.map((e,i)=>`
+        <div class="entry-row" data-idx="${i}">
+          <input type="text" class="entry-desc" value="${esc(e.desc||'')}" placeholder="Mô tả công việc" />
+          <input type="number" min="0" class="entry-min" value="${Number(e.minutes)||0}" placeholder="Phút" />
+          <button class="entry-remove" data-remove="${i}" title="Xoá mục">×</button>
+        </div>`).join('')}
+      <div class="entry-add-row">
+        <input type="text" class="new-desc" placeholder="Mô tả công việc mới" />
+        <input type="number" min="0" class="new-min" placeholder="Phút" />
+        <button class="btn btn--ghost btn--sm" data-add="1">+ Thêm</button>
+      </div>
+    </div>`;
+}
+
+function bindSessionEvents(){
+  document.querySelectorAll('.session-card').forEach(card=>{
+    const sk = card.dataset.session;
+    card.querySelectorAll('.entry-desc').forEach((inp,i)=>inp.addEventListener('input', ()=>{ state.myEntries[sk][i].desc = inp.value; }));
+    card.querySelectorAll('.entry-min').forEach((inp,i)=>inp.addEventListener('input', ()=>{ state.myEntries[sk][i].minutes = Number(inp.value)||0; updateCapDisplay(card, sk); }));
+    card.querySelectorAll('[data-remove]').forEach(btn=>btn.addEventListener('click', ()=>{ state.myEntries[sk].splice(Number(btn.dataset.remove),1); renderMyLog(); }));
+    card.querySelector('[data-add]').addEventListener('click', ()=>{
+      const desc = card.querySelector('.new-desc').value.trim();
+      const minutes = Number(card.querySelector('.new-min').value)||0;
+      if(!desc || minutes<=0) return;
+      state.myEntries[sk].push({desc, minutes});
+      renderMyLog();
+    });
+  });
+}
+function updateCapDisplay(card, sk){
+  const total = state.myEntries[sk].reduce((s,e)=>s+(Number(e.minutes)||0),0);
+  const cap = SESSION_CAP[sk];
+  const capEl = card.querySelector('.session-cap');
+  capEl.textContent = `${fmtHM(total)} / tối đa ${fmtHM(cap)}`;
+  capEl.classList.toggle('over', total>cap);
+}
+
+async function saveMyLog(){
+  for(const sk of SESSION_KEYS){
+    const total = state.myEntries[sk].reduce((s,e)=>s+(Number(e.minutes)||0),0);
+    if(total > SESSION_CAP[sk]){ state.myFlash=''; alert(`${SESSION_LABEL[sk]} vượt quá thời lượng tối đa (${fmtHM(SESSION_CAP[sk])}).`); return; }
+  }
+  try{
+    await api('/api/logs/'+state.myDate, {method:'PUT', body: JSON.stringify(state.myEntries)});
+    state.myFlash = 'Đã lưu ✓';
+    await loadRecentDays();
+    render();
+  }catch(e){ alert(e.message); }
+}
+
+/* ============ Tab: Báo cáo ============ */
+async function loadReport(){
+  try{
+    let url = `/api/report?date=${state.reportDate}`;
+    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.reportDept)}`;
+    const data = await api(url);
+    state.reportRows = data.rows; state.departments = data.departments;
+  }catch(e){ state.reportRows=[]; }
+  state.reportLoading=false;
+}
+
+function renderReport(){
+  const main = document.getElementById('main');
+  const isBgd = state.user.role==='bgd';
+  main.innerHTML = `
+    <div class="toolbar-row"><h2 class="section-title">Báo cáo công việc theo ngày</h2></div>
+    <div class="filters-bar">
+      <div class="field"><label for="rep-date">Ngày xem</label><input type="date" id="rep-date" value="${state.reportDate}" /></div>
+      ${isBgd ? `<div class="field"><label for="rep-dept">Phòng ban</label>
+        <select id="rep-dept">
+          <option value="all" ${state.reportDept==='all'?'selected':''}>Tất cả phòng ban</option>
+          ${state.departments.map(d=>`<option value="${esc(d)}" ${state.reportDept===d?'selected':''}>${esc(d)}</option>`).join('')}
+        </select></div>` : ''}
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Nhân viên</th><th>Buổi sáng</th><th>Buổi chiều</th><th>Tăng ca</th><th>Tổng</th></tr></thead>
+      <tbody>
+        ${state.reportLoading ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</td></tr>` :
+          (state.reportRows.length===0 ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</td></tr>` :
+          state.reportRows.map(r=>{
+            const total = SESSION_KEYS.reduce((s,sk)=>s+(r[sk]||[]).reduce((a,e)=>a+(Number(e.minutes)||0),0),0);
+            return `<tr>
+              <td><div class="emp-name">${esc(r.fullname)}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
+              ${SESSION_KEYS.map(sk=>`<td>${renderEntryCell(r[sk])}</td>`).join('')}
+              <td><b>${fmtHM(total)}</b></td>
+            </tr>`;
+          }).join(''))}
+      </tbody>
+    </table>`;
+  document.getElementById('rep-date').addEventListener('change', async e=>{ state.reportDate=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+  const deptSel = document.getElementById('rep-dept');
+  if(deptSel) deptSel.addEventListener('change', async e=>{ state.reportDept=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+}
+function renderEntryCell(entries){
+  if(!entries || entries.length===0) return `<span class="cell-empty">Chưa ghi nhận</span>`;
+  return entries.map(e=>`<span class="pill">${esc(e.desc||'(không có mô tả)')} · ${fmtHM(Number(e.minutes)||0)}</span>`).join(' ');
+}
+
+/* ============ Tab: Quản lý người dùng ============ */
+async function loadUsers(){
+  try{
+    const data = await api('/api/users');
+    state.users = data.users; state.departments = data.departments;
+  }catch(e){ state.users=[]; }
+}
+function renderUsers(){
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="toolbar-row">
+      <h2 class="section-title">Quản lý người dùng</h2>
+      <button class="btn btn--primary" style="width:auto;" id="btn-add-user">+ Thêm người dùng</button>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Họ tên</th><th>Tài khoản</th><th>Cấp bậc</th><th>Phòng ban</th><th></th></tr></thead>
+      <tbody>
+        ${state.users.length===0 ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải hoặc chưa có người dùng</td></tr>` :
+          state.users.map(u=>`
+          <tr>
+            <td class="emp-name">${esc(u.fullname)}</td>
+            <td style="font-family:var(--font-mono);">${esc(u.username)}</td>
+            <td><span class="role-tag role-tag--${u.role}">${ROLE_LABEL[u.role]}</span></td>
+            <td>${esc(u.department || '—')}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              <button class="btn btn--ghost btn--sm" data-edit="${esc(u.username)}">Sửa</button>
+              ${u.username!==state.user.username ? `<button class="btn btn--danger btn--sm" data-del="${esc(u.username)}">Xoá</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  document.getElementById('btn-add-user').addEventListener('click', ()=>{ state.userModal={mode:'add'}; state.userModalError=''; render(); });
+  document.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const u = state.users.find(x=>x.username===btn.dataset.edit);
+    state.userModal = {mode:'edit', data: Object.assign({password:''}, u)};
+    state.userModalError=''; render();
+  }));
+  document.querySelectorAll('[data-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+    if(!confirm(`Xoá tài khoản "${btn.dataset.del}"? Hành động này không thể hoàn tác.`)) return;
+    try{ await api('/api/users/'+encodeURIComponent(btn.dataset.del), {method:'DELETE'}); await loadUsers(); render(); }
+    catch(e){ alert(e.message); }
+  }));
+}
+
+/* ============ Modal: thêm/sửa người dùng ============ */
+function renderUserModal(){
+  const m = state.userModal;
+  const isEdit = m.mode==='edit';
+  const d = m.data || {username:'', fullname:'', role:'nhan_vien', department:''};
+  return `
+  <div class="modal-overlay" id="user-modal-overlay">
+    <div class="modal-card">
+      <h3 class="modal-title">${isEdit?'Sửa người dùng':'Thêm người dùng'}</h3>
+      ${state.userModalError ? `<div class="error-msg">${esc(state.userModalError)}</div>` : ''}
+      <div class="field"><label>Tên đăng nhập</label><input id="um-username" value="${esc(d.username)}" ${isEdit?'disabled':''} /></div>
+      <div class="field"><label>Mật khẩu ${isEdit?'(để trống nếu không đổi)':''}</label><input id="um-password" type="password" /></div>
+      <div class="field"><label>Họ tên</label><input id="um-fullname" value="${esc(d.fullname)}" /></div>
+      <div class="field"><label>Cấp bậc</label>
+        <select id="um-role">
+          <option value="nhan_vien" ${d.role==='nhan_vien'?'selected':''}>Nhân viên</option>
+          <option value="truong_pho" ${d.role==='truong_pho'?'selected':''}>Trưởng/Phó phòng</option>
+          <option value="bgd" ${d.role==='bgd'?'selected':''}>Ban giám đốc</option>
+        </select></div>
+      <div class="field" id="um-dept-field"><label>Phòng ban</label>
+        <select id="um-department">
+          ${state.departments.map(dep=>`<option value="${esc(dep)}" ${d.department===dep?'selected':''}>${esc(dep)}</option>`).join('')}
+        </select></div>
+      <div class="modal-actions">
+        <button class="btn btn--ghost" id="um-cancel">Huỷ</button>
+        <button class="btn btn--primary" style="width:auto;" id="um-submit">${isEdit?'Lưu thay đổi':'Tạo tài khoản'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function renderPasswordModal(){
+  return `
+  <div class="modal-overlay" id="pw-modal-overlay">
+    <div class="modal-card">
+      <h3 class="modal-title">Đổi mật khẩu</h3>
+      ${state.pwError ? `<div class="error-msg">${esc(state.pwError)}</div>` : ''}
+      ${state.pwOk ? `<div class="ok-msg">Đổi mật khẩu thành công.</div>` : ''}
+      <div class="field"><label>Mật khẩu mới (tối thiểu 4 ký tự)</label><input id="pw-new" type="password" /></div>
+      <div class="modal-actions">
+        <button class="btn btn--ghost" id="pw-cancel">Đóng</button>
+        <button class="btn btn--primary" style="width:auto;" id="pw-submit">Cập nhật</button>
+      </div>
+    </div>
+  </div>`;
+}
+function bindModalEvents(){
+  const pwOverlay = document.getElementById('pw-modal-overlay');
+  if(pwOverlay){
+    document.getElementById('pw-cancel').addEventListener('click', ()=>{ state.pwModalOpen=false; render(); });
+    document.getElementById('pw-submit').addEventListener('click', async ()=>{
+      const newPassword = document.getElementById('pw-new').value;
+      try{ await api('/api/me/password', {method:'PUT', body: JSON.stringify({newPassword})}); state.pwOk=true; state.pwError=''; render(); }
+      catch(e){ state.pwError = e.message; state.pwOk=false; render(); }
+    });
+  }
+  const userOverlay = document.getElementById('user-modal-overlay');
+  if(userOverlay){
+    const roleSel = document.getElementById('um-role');
+    const deptField = document.getElementById('um-dept-field');
+    function syncDeptVisibility(){ deptField.style.display = roleSel.value==='bgd' ? 'none' : 'block'; }
+    syncDeptVisibility();
+    roleSel.addEventListener('change', syncDeptVisibility);
+    document.getElementById('um-cancel').addEventListener('click', ()=>{ state.userModal=null; render(); });
+    document.getElementById('um-submit').addEventListener('click', async ()=>{
+      const isEdit = state.userModal.mode==='edit';
+      const username = document.getElementById('um-username').value.trim();
+      const password = document.getElementById('um-password').value;
+      const fullname = document.getElementById('um-fullname').value.trim();
+      const role = document.getElementById('um-role').value;
+      const department = role==='bgd' ? '' : document.getElementById('um-department').value;
+      if(!isEdit && (!username || !password || !fullname)){ state.userModalError='Vui lòng nhập đầy đủ thông tin bắt buộc.'; render(); return; }
+      try{
+        if(isEdit){
+          await api('/api/users/'+encodeURIComponent(username), {method:'PUT', body: JSON.stringify({password: password||undefined, fullname, role, department})});
+        } else {
+          await api('/api/users', {method:'POST', body: JSON.stringify({username, password, fullname, role, department})});
+        }
+        state.userModal=null; await loadUsers(); render();
+      }catch(e){ state.userModalError = e.message; render(); }
+    });
+  }
+}
+
+/* ============ Khởi động ============ */
+(async function init(){
+  if(state.token && state.user){ await bootAfterLogin(); } else { render(); }
+})();
+</script>
+</body>
+</html>
