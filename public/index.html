@@ -14,6 +14,7 @@
     --accent:#3D6B54; --accent-soft:#DCE7DD;
     --gold:#AD7F35; --gold-soft:#F1E4C4;
     --danger:#9C3D34; --danger-soft:#F1DEDA;
+    --brand-red:#8E1C28; --brand-red-dark:#6B121C; --brand-gold:#C9A227;
     --radius:3px;
     --font-display:'Source Serif 4', Georgia, serif;
     --font-body:'IBM Plex Sans', system-ui, -apple-system, sans-serif;
@@ -27,10 +28,17 @@
   /* Login */
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
     background:repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(35,44,41,0.035) 40px), var(--paper);}
-  .login-card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:36px 32px;}
+  .login-card{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;overflow:hidden;}
+  .login-banner{width:100%;display:block;}
+  .login-red-bar{background:linear-gradient(135deg,var(--brand-red),var(--brand-red-dark));border-bottom:2px solid var(--brand-gold);padding:16px 32px;}
+  .login-red-bar span{color:#fff;font-family:var(--font-display);font-size:23px;font-weight:600;letter-spacing:.01em;}
+  .login-card-body{padding:24px 32px 32px;}
   .eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px;}
   .title-lg{font-family:var(--font-display);font-size:26px;font-weight:600;margin:0 0 4px;}
-  .sub{font-size:13px;color:var(--ink-soft);margin:0 0 26px;line-height:1.5;}
+  .sub{font-size:13px;color:var(--ink-soft);margin:0 0 22px;line-height:1.5;}
+  .login-card-body input:focus{outline:2px solid var(--brand-red);outline-offset:1px;border-color:var(--brand-red);}
+  .login-card-body .btn--primary{background:var(--brand-red);}
+  .login-card-body .btn--primary:hover{background:var(--brand-red-dark);}
   .field{margin-bottom:16px;}
   .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
   .field select,.field input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;font-family:var(--font-body);font-size:14px;color:var(--ink);}
@@ -176,14 +184,15 @@ function renderLogin(){
   app.innerHTML = `
     <div class="login-screen">
       <div class="login-card">
-        <p class="eyebrow">Sổ nhật ký công việc</p>
-        <h1 class="title-lg">Đăng nhập</h1>
-        <p class="sub">Ghi nhận công việc hằng ngày của toàn công ty.</p>
-        ${state.loginError ? `<div class="error-msg">${esc(state.loginError)}</div>` : ''}
-        <div class="field"><label for="li-user">Tên đăng nhập</label><input id="li-user" type="text" autocomplete="username" /></div>
-        <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" type="password" autocomplete="current-password" /></div>
-        <button class="btn btn--primary" id="btn-login" ${state.loginBusy?'disabled':''}>${state.loginBusy?'Đang đăng nhập...':'Đăng nhập'}</button>
-        <div class="login-hint">Tài khoản quản trị mặc định (tạo tự động lần đầu chạy server): <b>admin / admin123</b><br>Hãy đổi mật khẩu ngay sau khi đăng nhập.</div>
+        <img class="login-banner" src="agribank-banner.png" alt="Agribank — Nhật ký công việc" />
+        <div class="login-red-bar"><span>Đăng nhập</span></div>
+        <div class="login-card-body">
+          <p class="sub">Ghi nhận công việc hằng ngày của toàn công ty.</p>
+          ${state.loginError ? `<div class="error-msg">${esc(state.loginError)}</div>` : ''}
+          <div class="field"><label for="li-user">Tên đăng nhập</label><input id="li-user" type="text" autocomplete="username" /></div>
+          <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" type="password" autocomplete="current-password" /></div>
+          <button class="btn btn--primary" id="btn-login" ${state.loginBusy?'disabled':''}>${state.loginBusy?'Đang đăng nhập...':'Đăng nhập'}</button>
+        </div>
       </div>
     </div>`;
   document.getElementById('btn-login').addEventListener('click', doLogin);
