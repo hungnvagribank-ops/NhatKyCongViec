@@ -214,7 +214,7 @@ function renderLogin(){
 }
 
 async function doLogin(){
-  const username = document.getElementById('li-user').value.trim();
+  const username = document.getElementById('li-user').value.trim().toLowerCase();
   const password = document.getElementById('li-pass').value;
   if(!username || !password){ state.loginError='Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.'; render(); return; }
   state.loginBusy = true; render();
@@ -604,7 +604,7 @@ function bindModalEvents(){
     document.getElementById('um-cancel').addEventListener('click', ()=>{ state.userModal=null; render(); });
     document.getElementById('um-submit').addEventListener('click', async ()=>{
       const isEdit = state.userModal.mode==='edit';
-      const username = document.getElementById('um-username').value.trim();
+      const username = document.getElementById('um-username').value.trim().toLowerCase();
       const password = document.getElementById('um-password').value;
       const fullname = document.getElementById('um-fullname').value.trim();
       const role = document.getElementById('um-role').value;
