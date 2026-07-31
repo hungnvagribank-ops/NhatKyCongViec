@@ -328,7 +328,6 @@ function renderMyLog(){
       <div>
         <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
           <span style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--brand-red);">${state.myDate===today?'Hôm nay':displayDate(state.myDate)}</span>
-          <span style="font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);">${displayDate(state.myDate)}</span>
         </div>
         ${SESSION_KEYS.map(sk=>renderSessionCard(sk)).join('')}
         <div class="save-bar">
