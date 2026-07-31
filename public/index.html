@@ -71,10 +71,10 @@
   .role-tag--nhan_vien{background:var(--accent-soft);color:var(--accent);}
   .role-tag--truong_pho{background:var(--gold-soft);color:var(--gold);}
   .role-tag--bgd{background:#233c2c;color:#F1E4C4;}
-  .tabs{display:flex;gap:4px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--card);overflow-x:auto;}
-  .tab{padding:12px 16px;font-size:13.5px;color:var(--ink-soft);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;}
-  .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-  .tab:hover:not(.active){color:var(--ink);}
+  .tabs{display:flex;gap:4px;padding:0 28px;border-bottom:2px solid var(--brand-gold);background:linear-gradient(135deg,var(--brand-red),var(--brand-red-dark));overflow-x:auto;}
+  .tab{padding:12px 16px;font-size:13.5px;color:rgba(255,255,255,0.75);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;}
+  .tab.active{color:#fff;border-bottom-color:var(--brand-gold);font-weight:600;}
+  .tab:hover:not(.active){color:#fff;}
   .main{padding:26px 28px 60px;max-width:1080px;margin:0 auto;}
 
   /* My log */
@@ -87,7 +87,7 @@
   .day-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-left:8px;}
   .session-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
   .session-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-  .session-title{font-family:var(--font-display);font-size:17px;font-weight:600;}
+  .session-title{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--brand-red);}
   .session-cap{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);}
   .session-cap.over{color:var(--danger);font-weight:600;}
   .entry-row{display:grid;grid-template-columns:1fr 190px 90px 34px;gap:8px;margin-bottom:8px;align-items:center;}
@@ -112,7 +112,7 @@
   .cell-empty{color:var(--ink-soft);font-style:italic;}
   .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:2px;background:var(--paper-dark);margin:1px 3px 1px 0;}
   .toolbar-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
-  .section-title{font-family:var(--font-display);font-size:20px;font-weight:600;margin:0;}
+  .section-title{font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--brand-red);margin:0;}
 
   /* Modal */
   .modal-overlay{position:fixed;inset:0;background:rgba(35,44,41,0.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:20;}
@@ -319,7 +319,7 @@ function renderMyLog(){
       </div>
       <div>
         <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
-          <span style="font-family:var(--font-display);font-size:20px;font-weight:600;">${state.myDate===today?'Hôm nay':displayDate(state.myDate)}</span>
+          <span style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--brand-red);">${state.myDate===today?'Hôm nay':displayDate(state.myDate)}</span>
           <span style="font-family:var(--font-mono);font-size:12px;color:var(--ink-soft);">${displayDate(state.myDate)}</span>
         </div>
         ${SESSION_KEYS.map(sk=>renderSessionCard(sk)).join('')}
