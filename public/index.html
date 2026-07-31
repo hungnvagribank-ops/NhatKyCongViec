@@ -82,13 +82,33 @@
   .main{padding:26px 28px 60px;max-width:1080px;margin:0 auto;}
 
   /* My log */
-  .my-log-layout{display:grid;grid-template-columns:190px 1fr;gap:22px;align-items:start;}
+  .my-log-layout{display:grid;grid-template-columns:250px 1fr;gap:22px;align-items:start;}
   .day-list{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--card);}
   .day-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);color:var(--ink-soft);}
   .day-item:last-child{border-bottom:none;}
   .day-item:hover{background:var(--paper-dark);}
   .day-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
   .day-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-left:8px;}
+  .cal-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .cal-title{font-family:var(--font-display);font-weight:600;font-size:14.5px;color:var(--ink);}
+  .cal-nav{display:flex;gap:4px;}
+  .cal-nav button{width:24px;height:24px;border:1px solid var(--line);background:#fff;border-radius:var(--radius);cursor:pointer;color:var(--ink-soft);font-size:12px;line-height:1;}
+  .cal-nav button:hover{background:var(--paper-dark);}
+  .cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px;}
+  .cal-weekdays span{font-family:var(--font-mono);font-size:9.5px;color:var(--ink-soft);text-align:center;text-transform:uppercase;display:block;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+  .cal-day{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;border-radius:50%;cursor:pointer;color:var(--ink);}
+  .cal-day.other-month{color:var(--line);cursor:default;}
+  .cal-day.future{color:var(--ink);cursor:not-allowed;}
+  .cal-day.future:hover{background:none;}
+  .cal-day:not(.other-month):not(.future):hover{background:var(--paper-dark);}
+  .cal-day.selected{background:var(--brand-red);color:#fff;font-weight:600;}
+  .cal-day.today-marker{box-shadow:inset 0 0 0 1px var(--brand-gold);}
+  .cal-day .has-dot{position:absolute;bottom:2px;width:4px;height:4px;border-radius:50%;background:var(--brand-gold);}
+  .cal-day.selected .has-dot{background:#fff;}
+  .cal-today-btn{margin-top:10px;width:100%;padding:7px;font-size:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;cursor:pointer;color:var(--brand-red);font-weight:500;font-family:var(--font-body);}
+  .cal-today-btn:hover{background:var(--paper-dark);}
   .session-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
   .session-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .session-title{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--brand-red);}
@@ -179,7 +199,7 @@ const state = {
   myDate: todayISO(),
   myEntries: {morning:[], afternoon:[], overtime:[]},
   myFlash:'', myLoading:false,
-  recentDays: [],
+  calYear: new Date().getFullYear(), calMonth: new Date().getMonth()+1, monthHasData: new Set(),
   reportDate: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false,
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
   pwModalOpen:false, pwError:'', pwOk:false
@@ -237,7 +257,7 @@ function doLogout(){
 }
 
 async function bootAfterLogin(){
-  await Promise.all([loadMyLog(state.myDate), loadRecentDays()]);
+  await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
   render();
 }
 
@@ -302,16 +322,82 @@ async function loadMyLog(date){
   state.myLoading = false;
 }
 
-async function loadRecentDays(){
+async function loadMonthLogs(year, month){
   try{
-    const data = await api('/api/logs?limit=30');
-    const withData = new Set(data.logs.filter(l => (l.morning.length+l.afternoon.length+l.overtime.length)>0).map(l=>l.date));
-    const days=[];
-    for(let i=0;i<7;i++){ const iso = ymd(shiftDate(new Date(),-i)); days.push({date:iso, has: withData.has(iso)}); }
-    state.recentDays = days;
-  }catch(e){ state.recentDays=[]; }
+    const data = await api(`/api/logs-month?year=${year}&month=${month}`);
+    const set = new Set();
+    (data.logs||[]).forEach(l=>{ if((l.morning.length+l.afternoon.length+l.overtime.length)>0) set.add(l.date); });
+    state.monthHasData = set;
+  }catch(e){ state.monthHasData = new Set(); }
 }
-function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const MONTH_NAMES = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'];
+function buildCalendarCells(year, month){
+  const firstWeekday = new Date(year, month-1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const daysInPrevMonth = new Date(year, month-1, 0).getDate();
+  const cells = [];
+  for(let i=firstWeekday-1;i>=0;i--) cells.push({day: daysInPrevMonth-i, other:true});
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells.push({day:d, other:false, iso});
+  }
+  const trailing = (7 - (cells.length % 7)) % 7;
+  for(let d=1; d<=trailing; d++) cells.push({day:d, other:true});
+  return cells;
+}
+function renderCalendar(){
+  const cells = buildCalendarCells(state.calYear, state.calMonth);
+  const todayIso = todayISO();
+  return `
+    <div class="cal-card">
+      <div class="cal-head">
+        <span class="cal-title">${MONTH_NAMES[state.calMonth-1]} ${state.calYear}</span>
+        <div class="cal-nav">
+          <button data-cal-nav="-1" title="Tháng trước">‹</button>
+          <button data-cal-nav="1" title="Tháng sau">›</button>
+        </div>
+      </div>
+      <div class="cal-weekdays"><span>CN</span><span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span></div>
+      <div class="cal-grid">
+        ${cells.map(c=>{
+          if(c.other) return `<div class="cal-day other-month">${c.day}</div>`;
+          const isFuture = c.iso > todayIso;
+          const isSelected = c.iso === state.myDate;
+          const isToday = c.iso === todayIso;
+          const hasDot = state.monthHasData.has(c.iso);
+          const cls = ['cal-day'];
+          if(isFuture) cls.push('future');
+          if(isSelected) cls.push('selected');
+          if(isToday) cls.push('today-marker');
+          return `<div class="${cls.join(' ')}" ${isFuture?'':`data-date="${c.iso}"`}>${c.day}${hasDot && !isSelected ? '<span class="has-dot"></span>':''}</div>`;
+        }).join('')}
+      </div>
+      <button class="cal-today-btn" id="cal-today-btn">Về hôm nay</button>
+    </div>`;
+}
+function bindCalendarEvents(){
+  document.querySelectorAll('.cal-day[data-date]').forEach(el=>{
+    el.addEventListener('click', async ()=>{ state.myDate = el.dataset.date; state.myFlash=''; await loadMyLog(state.myDate); render(); });
+  });
+  document.querySelectorAll('[data-cal-nav]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const delta = Number(btn.dataset.calNav);
+      let m = state.calMonth + delta, y = state.calYear;
+      if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+      state.calMonth=m; state.calYear=y;
+      await loadMonthLogs(y,m);
+      render();
+    });
+  });
+  const todayBtn = document.getElementById('cal-today-btn');
+  if(todayBtn) todayBtn.addEventListener('click', async ()=>{
+    const t = new Date();
+    state.calYear = t.getFullYear(); state.calMonth = t.getMonth()+1;
+    state.myDate = todayISO(); state.myFlash='';
+    await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
+    render();
+  });
+}
 
 function renderMyLog(){
   const main = document.getElementById('main');
@@ -319,12 +405,7 @@ function renderMyLog(){
 
   main.innerHTML = `
     <div class="my-log-layout">
-      <div class="day-list">
-        ${state.recentDays.map(d=>`
-          <div class="day-item ${d.date===state.myDate?'active':''}" data-date="${d.date}">
-            <span>${d.date===today?'Hôm nay':displayDate(d.date)}</span>${d.has?'<span class="day-dot"></span>':''}
-          </div>`).join('')}
-      </div>
+      ${renderCalendar()}
       <div>
         <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px;">
           <span style="font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--brand-red);">${state.myDate===today?'Hôm nay':displayDate(state.myDate)}</span>
@@ -337,9 +418,7 @@ function renderMyLog(){
       </div>
     </div>`;
 
-  document.querySelectorAll('.day-item').forEach(el=>{
-    el.addEventListener('click', async ()=>{ state.myDate = el.dataset.date; state.myFlash=''; await loadMyLog(state.myDate); render(); });
-  });
+  bindCalendarEvents();
   document.getElementById('btn-save-log').addEventListener('click', saveMyLog);
   bindSessionEvents();
 }
