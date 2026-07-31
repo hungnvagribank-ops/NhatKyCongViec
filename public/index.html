@@ -90,12 +90,12 @@
   .session-title{font-family:var(--font-display);font-size:17px;font-weight:600;}
   .session-cap{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);}
   .session-cap.over{color:var(--danger);font-weight:600;}
-  .entry-row{display:grid;grid-template-columns:1fr 100px 34px;gap:8px;margin-bottom:8px;align-items:center;}
-  .entry-row input{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;font-family:var(--font-body);}
+  .entry-row{display:grid;grid-template-columns:1fr 190px 90px 34px;gap:8px;margin-bottom:8px;align-items:center;}
+  .entry-row input,.entry-row select{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;font-family:var(--font-body);background:#fff;color:var(--ink);}
   .entry-remove{width:34px;height:34px;border:1px solid var(--line);background:#fff;border-radius:var(--radius);cursor:pointer;color:var(--danger);font-size:16px;line-height:1;}
   .entry-remove:hover{background:var(--danger-soft);}
-  .entry-add-row{display:grid;grid-template-columns:1fr 100px 80px;gap:8px;margin-top:10px;}
-  .entry-add-row input{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;}
+  .entry-add-row{display:grid;grid-template-columns:1fr 190px 90px 80px;gap:8px;margin-top:10px;}
+  .entry-add-row input,.entry-add-row select{padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);font-size:13.5px;background:#fff;color:var(--ink);}
   .empty-entries{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin-bottom:8px;}
   .save-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:6px;}
   .save-flash{font-size:12.5px;color:var(--accent);font-weight:500;}
@@ -126,7 +126,8 @@
     .day-item{border-bottom:none;border-right:1px solid var(--line);white-space:nowrap;}
     .topbar{padding:16px;} .main{padding:18px 16px 50px;} .tabs{padding:0 16px;}
     .data-table{display:block;overflow-x:auto;}
-    .entry-row,.entry-add-row{grid-template-columns:1fr 80px 34px;}
+    .entry-row,.entry-add-row{grid-template-columns:1fr 34px;}
+    .entry-row select,.entry-add-row select,.entry-row .entry-min,.entry-add-row .new-min{grid-column:1 / -1;}
   }
 </style>
 </head>
@@ -139,6 +140,14 @@ const SESSION_KEYS = ['morning','afternoon','overtime'];
 const SESSION_LABEL = {morning:'Buổi sáng', afternoon:'Buổi chiều', overtime:'Tăng ca'};
 const SESSION_CAP = {morning:240, afternoon:240, overtime:960};
 const ROLE_LABEL = {nhan_vien:'Nhân viên', truong_pho:'Trưởng/Phó phòng', bgd:'Ban giám đốc'};
+const STATUS_OPTIONS = [
+  {value:'hoan_thanh_dung_han', label:'Hoàn thành đúng hạn'},
+  {value:'hoan_thanh_sau_han', label:'Hoàn thành sau hạn'},
+  {value:'dang_thuc_hien_dung_han', label:'Đang thực hiện đúng hạn'},
+  {value:'dang_thuc_hien_qua_han', label:'Đang thực hiện quá hạn'},
+  {value:'thuong_xuyen', label:'Công việc thường xuyên'}
+];
+const STATUS_LABEL = Object.fromEntries(STATUS_OPTIONS.map(o=>[o.value,o.label]));
 
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function shiftDate(base,delta){ const d=new Date(base); d.setDate(d.getDate()+delta); return d; }
@@ -341,11 +350,17 @@ function renderSessionCard(sk){
       ${entries.length===0 ? `<div class="empty-entries">Chưa có mục nào.</div>` : entries.map((e,i)=>`
         <div class="entry-row" data-idx="${i}">
           <input type="text" class="entry-desc" value="${esc(e.desc||'')}" placeholder="Mô tả công việc" />
+          <select class="entry-status">
+            ${STATUS_OPTIONS.map(o=>`<option value="${o.value}" ${e.status===o.value?'selected':''}>${o.label}</option>`).join('')}
+          </select>
           <input type="number" min="0" class="entry-min" value="${Number(e.minutes)||0}" placeholder="Phút" />
           <button class="entry-remove" data-remove="${i}" title="Xoá mục">×</button>
         </div>`).join('')}
       <div class="entry-add-row">
         <input type="text" class="new-desc" placeholder="Mô tả công việc mới" />
+        <select class="new-status">
+          ${STATUS_OPTIONS.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}
+        </select>
         <input type="number" min="0" class="new-min" placeholder="Phút" />
         <button class="btn btn--ghost btn--sm" data-add="1">+ Thêm</button>
       </div>
@@ -356,13 +371,15 @@ function bindSessionEvents(){
   document.querySelectorAll('.session-card').forEach(card=>{
     const sk = card.dataset.session;
     card.querySelectorAll('.entry-desc').forEach((inp,i)=>inp.addEventListener('input', ()=>{ state.myEntries[sk][i].desc = inp.value; }));
+    card.querySelectorAll('.entry-status').forEach((sel,i)=>sel.addEventListener('change', ()=>{ state.myEntries[sk][i].status = sel.value; }));
     card.querySelectorAll('.entry-min').forEach((inp,i)=>inp.addEventListener('input', ()=>{ state.myEntries[sk][i].minutes = Number(inp.value)||0; updateCapDisplay(card, sk); }));
     card.querySelectorAll('[data-remove]').forEach(btn=>btn.addEventListener('click', ()=>{ state.myEntries[sk].splice(Number(btn.dataset.remove),1); renderMyLog(); }));
     card.querySelector('[data-add]').addEventListener('click', ()=>{
       const desc = card.querySelector('.new-desc').value.trim();
+      const status = card.querySelector('.new-status').value;
       const minutes = Number(card.querySelector('.new-min').value)||0;
       if(!desc || minutes<=0) return;
-      state.myEntries[sk].push({desc, minutes});
+      state.myEntries[sk].push({desc, status, minutes});
       renderMyLog();
     });
   });
@@ -433,7 +450,7 @@ function renderReport(){
 }
 function renderEntryCell(entries){
   if(!entries || entries.length===0) return `<span class="cell-empty">Chưa ghi nhận</span>`;
-  return entries.map(e=>`<span class="pill">${esc(e.desc||'(không có mô tả)')} · ${fmtHM(Number(e.minutes)||0)}</span>`).join(' ');
+  return entries.map(e=>`<span class="pill">${esc(e.desc||'(không có mô tả)')} · ${esc(STATUS_LABEL[e.status]||'—')} · ${fmtHM(Number(e.minutes)||0)}</span>`).join(' ');
 }
 
 /* ============ Tab: Quản lý người dùng ============ */
