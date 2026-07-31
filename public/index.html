@@ -221,7 +221,6 @@ function renderLogin(){
         <img class="login-banner" src="agribank-banner.png" alt="Agribank — Nhật ký công việc" />
         <div class="login-red-bar"><span>Đăng nhập</span></div>
         <div class="login-card-body">
-          <p class="sub">Ghi nhận công việc hằng ngày của toàn công ty.</p>
           ${state.loginError ? `<div class="error-msg">${esc(state.loginError)}</div>` : ''}
           <div class="field"><label for="li-user">Tên đăng nhập</label><input id="li-user" type="text" autocomplete="username" /></div>
           <div class="field"><label for="li-pass">Mật khẩu</label><input id="li-pass" type="password" autocomplete="current-password" /></div>
