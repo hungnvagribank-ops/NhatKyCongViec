@@ -75,6 +75,10 @@
   .tab{padding:12px 16px;font-size:13.5px;color:rgba(255,255,255,0.75);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;}
   .tab.active{color:#fff;border-bottom-color:var(--brand-gold);font-weight:600;}
   .tab:hover:not(.active){color:#fff;}
+  .tabs-spacer{flex:1;}
+  .btn-export{align-self:center;margin:8px 0;padding:7px 14px;font-size:12.5px;font-weight:500;border-radius:var(--radius);
+    background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.4);cursor:pointer;white-space:nowrap;font-family:var(--font-body);}
+  .btn-export:hover{background:rgba(255,255,255,0.22);}
   .main{padding:26px 28px 60px;max-width:1080px;margin:0 auto;}
 
   /* My log */
@@ -130,6 +134,7 @@
     .entry-row select,.entry-add-row select,.entry-row .entry-min,.entry-add-row .new-min{grid-column:1 / -1;}
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -261,6 +266,8 @@ function renderShell(){
       <div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log">Nhật ký của tôi</div>
       ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report">Báo cáo</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users">Quản lý người dùng</div>` : ''}
+      <div class="tabs-spacer"></div>
+      <button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>
     </div>
     <div class="main" id="main"></div>
     ${state.pwModalOpen ? renderPasswordModal() : ''}
@@ -268,6 +275,7 @@ function renderShell(){
   `;
   document.getElementById('btn-logout').addEventListener('click', doLogout);
   document.getElementById('btn-pw').addEventListener('click', ()=>{ state.pwModalOpen=true; state.pwError=''; state.pwOk=false; render(); });
+  document.getElementById('btn-export-excel').addEventListener('click', exportMyDataExcel);
   document.querySelectorAll('.tab').forEach(el=>{
     el.addEventListener('click', async ()=>{
       state.tab = el.dataset.tab;
@@ -390,6 +398,41 @@ function updateCapDisplay(card, sk){
   const capEl = card.querySelector('.session-cap');
   capEl.textContent = `${fmtHM(total)} / tối đa ${fmtHM(cap)}`;
   capEl.classList.toggle('over', total>cap);
+}
+
+async function exportMyDataExcel(){
+  if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
+  let logsData;
+  try{
+    const data = await api('/api/logs?limit=366');
+    logsData = data.logs || [];
+  }catch(e){ alert('Không thể lấy dữ liệu: ' + e.message); return; }
+
+  const rows = [];
+  logsData
+    .slice()
+    .sort((a,b)=> a.date < b.date ? -1 : (a.date > b.date ? 1 : 0))
+    .forEach(entry=>{
+      SESSION_KEYS.forEach(sk=>{
+        (entry[sk] || []).forEach(item=>{
+          rows.push({
+            'Ngày tháng': displayDate(entry.date),
+            'Công việc khai trong Sổ nhật ký': item.desc || '',
+            'Trạng thái công việc': STATUS_LABEL[item.status] || '',
+            'Thời gian (phút)': Number(item.minutes) || 0
+          });
+        });
+      });
+    });
+
+  if(rows.length === 0){ alert('Chưa có dữ liệu nhật ký để xuất.'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:14},{wch:50},{wch:26},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Nhật ký công việc');
+  const fileName = `nhat-ky-cong-viec_${state.user.username}_${todayISO()}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 
 async function saveMyLog(){
