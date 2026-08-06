@@ -4,11 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sổ Nhật Ký Công Việc</title>
-  <meta property="og:title" content="Sổ Nhật Ký Công Việc" />
-<meta property="og:description" content="Ứng dụng ghi nhật ký công việc hàng ngày" />
-<meta property="og:image" content="https://so-nhat-ky-cong-viec.onrender.com/agribank-banner.png" />
-<meta property="og:url" content="https://so-nhat-ky-cong-viec.onrender.com/" />
-<meta property="og:type" content="website" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -525,7 +520,7 @@ async function saveMyLog(){
   try{
     await api('/api/logs/'+state.myDate, {method:'PUT', body: JSON.stringify(state.myEntries)});
     state.myFlash = 'Đã lưu ✓';
-    await loadRecentDays();
+    await loadMonthLogs(state.calYear, state.calMonth);
     render();
   }catch(e){ alert(e.message); }
 }
