@@ -208,7 +208,7 @@ const state = {
   myEntries: {morning:[], afternoon:[], overtime:[]},
   myFlash:'', myLoading:false,
   calYear: new Date().getFullYear(), calMonth: new Date().getMonth()+1, monthHasData: new Set(),
-  reportDate: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false,
+  reportFrom: todayISO(), reportTo: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false, reportExpanded: new Set(),
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
   pwModalOpen:false, pwError:'', pwOk:false
 };
@@ -536,7 +536,7 @@ async function saveMyLog(){
 /* ============ Tab: Báo cáo ============ */
 async function loadReport(){
   try{
-    let url = `/api/report?date=${state.reportDate}`;
+    let url = `/api/report?from=${state.reportFrom}&to=${state.reportTo}`;
     if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.reportDept)}`;
     const data = await api(url);
     state.reportRows = data.rows; state.departments = data.departments;
@@ -544,13 +544,18 @@ async function loadReport(){
   state.reportLoading=false;
 }
 
+function rowTotalMinutes(days){
+  return (days||[]).reduce((sum,d)=> sum + SESSION_KEYS.reduce((s,sk)=> s+(d[sk]||[]).reduce((a,e)=>a+(Number(e.minutes)||0),0), 0), 0);
+}
+
 function renderReport(){
   const main = document.getElementById('main');
   const isBgd = state.user.role==='bgd';
   main.innerHTML = `
-    <div class="toolbar-row"><h2 class="section-title">Báo cáo công việc theo ngày</h2></div>
+    <div class="toolbar-row"><h2 class="section-title">Báo cáo công việc theo khoảng ngày</h2></div>
     <div class="filters-bar">
-      <div class="field"><label for="rep-date">Ngày xem</label><input type="date" id="rep-date" value="${state.reportDate}" /></div>
+      <div class="field"><label for="rep-from">Từ ngày</label><input type="date" id="rep-from" value="${state.reportFrom}" /></div>
+      <div class="field"><label for="rep-to">Đến ngày</label><input type="date" id="rep-to" value="${state.reportTo}" /></div>
       ${isBgd ? `<div class="field"><label for="rep-dept">Phòng ban</label>
         <select id="rep-dept">
           <option value="all" ${state.reportDept==='all'?'selected':''}>Tất cả phòng ban</option>
@@ -558,23 +563,48 @@ function renderReport(){
         </select></div>` : ''}
     </div>
     <table class="data-table">
-      <thead><tr><th>Nhân viên</th><th>Buổi sáng</th><th>Buổi chiều</th><th>Tăng ca</th><th>Tổng</th></tr></thead>
+      <thead><tr><th></th><th>Nhân viên</th><th>Số ngày có ghi nhận</th><th>Tổng thời gian</th></tr></thead>
       <tbody>
-        ${state.reportLoading ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</td></tr>` :
-          (state.reportRows.length===0 ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</td></tr>` :
+        ${state.reportLoading ? `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</td></tr>` :
+          (state.reportRows.length===0 ? `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</td></tr>` :
           state.reportRows.map(r=>{
-            const total = SESSION_KEYS.reduce((s,sk)=>s+(r[sk]||[]).reduce((a,e)=>a+(Number(e.minutes)||0),0),0);
-            return `<tr>
+            const total = rowTotalMinutes(r.days);
+            const expanded = state.reportExpanded.has(r.username);
+            const rows = [`<tr>
+              <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
               <td><div class="emp-name">${esc(r.fullname)}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
-              ${SESSION_KEYS.map(sk=>`<td>${renderEntryCell(r[sk])}</td>`).join('')}
+              <td>${(r.days||[]).length} ngày</td>
               <td><b>${fmtHM(total)}</b></td>
-            </tr>`;
+            </tr>`];
+            if(expanded){
+              rows.push(`<tr><td></td><td colspan="3" style="padding:0 14px 16px;">
+                ${(r.days||[]).length===0 ? `<span class="cell-empty">Chưa có ghi nhận nào trong khoảng ngày này.</span>` : `
+                <table class="data-table" style="border-color:var(--paper-dark);">
+                  <thead><tr><th>Ngày</th><th>Buổi sáng</th><th>Buổi chiều</th><th>Ngoài giờ</th></tr></thead>
+                  <tbody>
+                    ${r.days.map(d=>`<tr>
+                      <td style="white-space:nowrap;font-family:var(--font-mono);">${displayDate(d.date)}</td>
+                      ${SESSION_KEYS.map(sk=>`<td>${renderEntryCell(d[sk])}</td>`).join('')}
+                    </tr>`).join('')}
+                  </tbody>
+                </table>`}
+              </td></tr>`);
+            }
+            return rows.join('');
           }).join(''))}
       </tbody>
     </table>`;
-  document.getElementById('rep-date').addEventListener('change', async e=>{ state.reportDate=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+  document.getElementById('rep-from').addEventListener('change', async e=>{ state.reportFrom=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+  document.getElementById('rep-to').addEventListener('change', async e=>{ state.reportTo=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
   const deptSel = document.getElementById('rep-dept');
   if(deptSel) deptSel.addEventListener('change', async e=>{ state.reportDept=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+  document.querySelectorAll('[data-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const u = btn.dataset.toggle;
+      if(state.reportExpanded.has(u)) state.reportExpanded.delete(u); else state.reportExpanded.add(u);
+      render();
+    });
+  });
 }
 function renderEntryCell(entries){
   if(!entries || entries.length===0) return `<span class="cell-empty">Chưa ghi nhận</span>`;
