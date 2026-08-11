@@ -262,6 +262,60 @@ app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) 
   res.json({ rows, departments: DEPARTMENTS });
 });
 
+/* ---------------- SAO LƯU & KHÔI PHỤC (chỉ BGĐ) ---------------- */
+app.get('/api/admin/export', auth, requireRole('bgd'), async (req, res) => {
+  try {
+    const usersRes = await pool.query('SELECT username, password_hash, fullname, role, department FROM users ORDER BY username');
+    const logsRes = await pool.query(
+      `SELECT username, to_char(log_date,'YYYY-MM-DD') AS log_date, morning, afternoon, overtime
+       FROM logs ORDER BY username, log_date`
+    );
+    res.json({ users: usersRes.rows, logs: logsRes.rows, exportedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Không thể xuất dữ liệu.' });
+  }
+});
+
+app.post('/api/admin/import', auth, requireRole('bgd'), async (req, res) => {
+  const { users, logs } = req.body || {};
+  if (!Array.isArray(users) || !Array.isArray(logs)) return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let usersImported = 0;
+    for (const u of users) {
+      if (!u || !u.username || !u.password_hash || !u.fullname || !u.role) continue;
+      await client.query(
+        `INSERT INTO users (username, password_hash, fullname, role, department)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (username) DO UPDATE SET password_hash=$2, fullname=$3, role=$4, department=$5`,
+        [u.username, u.password_hash, u.fullname, u.role, u.department || '']
+      );
+      usersImported++;
+    }
+    let logsImported = 0;
+    for (const l of logs) {
+      if (!l || !l.username || !l.log_date) continue;
+      await client.query(
+        `INSERT INTO logs (username, log_date, morning, afternoon, overtime)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (username, log_date) DO UPDATE SET morning=$3, afternoon=$4, overtime=$5`,
+        [l.username, l.log_date, JSON.stringify(l.morning || []), JSON.stringify(l.afternoon || []), JSON.stringify(l.overtime || [])]
+      );
+      logsImported++;
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, usersImported, logsImported });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi khi khôi phục dữ liệu: ' + e.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy.' }));
 
 initDb()
