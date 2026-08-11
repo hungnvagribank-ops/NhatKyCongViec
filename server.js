@@ -249,7 +249,7 @@ app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) 
   let usersWhere = '';
   if (useDept) { usersParams.push(department); usersWhere = 'WHERE department = $1'; }
   const { rows: users } = await pool.query(
-    `SELECT username, fullname, department FROM users ${usersWhere} ORDER BY fullname`,
+    `SELECT username, fullname, department, role FROM users ${usersWhere} ORDER BY (role = 'truong_pho') DESC, fullname`,
     usersParams
   );
 
@@ -265,7 +265,7 @@ app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) 
   );
 
   const byUser = {};
-  users.forEach(u => { byUser[u.username] = { username: u.username, fullname: u.fullname, department: u.department, days: [] }; });
+  users.forEach(u => { byUser[u.username] = { username: u.username, fullname: u.fullname, department: u.department, role: u.role, days: [] }; });
   logs.forEach(l => {
     if (!byUser[l.username]) return;
     if ((l.morning || []).length + (l.afternoon || []).length + (l.overtime || []).length === 0) return;
