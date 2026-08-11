@@ -575,7 +575,7 @@ function renderReport(){
             const expanded = state.reportExpanded.has(r.username);
             const rows = [`<tr>
               <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
-              <td><div class="emp-name">${esc(r.fullname)}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
+              <td><div class="emp-name">${esc(r.fullname)} ${r.role==='truong_pho'?`<span class="role-tag role-tag--truong_pho" style="margin-left:6px;">${ROLE_LABEL.truong_pho}</span>`:''}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
               <td>${(r.days||[]).length} ngày</td>
               <td><b>${fmtHM(total)}</b></td>
             </tr>`];
