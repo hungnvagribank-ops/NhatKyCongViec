@@ -552,7 +552,10 @@ function renderReport(){
   const main = document.getElementById('main');
   const isBgd = state.user.role==='bgd';
   main.innerHTML = `
-    <div class="toolbar-row"><h2 class="section-title">Báo cáo công việc theo khoảng ngày</h2></div>
+    <div class="toolbar-row">
+      <h2 class="section-title">Báo cáo công việc theo khoảng ngày</h2>
+      <button class="btn btn--ghost btn--sm" id="btn-export-report">⬇ Xuất dữ liệu (Excel)</button>
+    </div>
     <div class="filters-bar">
       <div class="field"><label for="rep-from">Từ ngày</label><input type="date" id="rep-from" value="${state.reportFrom}" /></div>
       <div class="field"><label for="rep-to">Đến ngày</label><input type="date" id="rep-to" value="${state.reportTo}" /></div>
@@ -605,6 +608,40 @@ function renderReport(){
       render();
     });
   });
+  document.getElementById('btn-export-report').addEventListener('click', exportReportExcel);
+}
+
+function exportReportExcel(){
+  if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
+  const isBgd = state.user.role==='bgd';
+  const rows = [];
+  (state.reportRows||[]).forEach(r=>{
+    (r.days||[]).forEach(d=>{
+      SESSION_KEYS.forEach(sk=>{
+        (d[sk]||[]).forEach(item=>{
+          rows.push({
+            'Họ tên': r.fullname,
+            'Phòng ban': r.department || '',
+            'Ngày tháng': displayDate(d.date),
+            'Ca': SESSION_LABEL[sk],
+            'Công việc khai trong Sổ nhật ký': item.desc || '',
+            'Trạng thái công việc': STATUS_LABEL[item.status] || '',
+            'Thời gian (phút)': Number(item.minutes) || 0
+          });
+        });
+      });
+    });
+  });
+
+  if(rows.length === 0){ alert('Không có dữ liệu trong khoảng ngày/phòng ban đang chọn để xuất.'); return; }
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:22},{wch:26},{wch:14},{wch:12},{wch:50},{wch:26},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Báo cáo công việc');
+  const deptTag = isBgd ? (state.reportDept==='all' ? 'tat-ca-phong-ban' : state.reportDept.replace(/\s+/g,'-')) : state.user.department.replace(/\s+/g,'-');
+  const fileName = `bao-cao-cong-viec_${deptTag}_${state.reportFrom}_${state.reportTo}.xlsx`;
+  XLSX.writeFile(wb, fileName);
 }
 function renderEntryCell(entries){
   if(!entries || entries.length===0) return `<span class="cell-empty">Chưa ghi nhận</span>`;
