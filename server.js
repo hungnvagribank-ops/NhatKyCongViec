@@ -13,6 +13,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'doi-chuoi-bi-mat-nay-trong-bien-moi-truong';
 const SESSION_MAX = { morning: 240, afternoon: 240, overtime: 960 };
 const DEPARTMENTS = [
+  'Ban Giám đốc',
   'Quản lý đào tạo và Thư viện',
   'Kế toán',
   'Nghiên cứu và giảng dạy',
@@ -237,29 +238,41 @@ app.get('/api/logs-month', auth, async (req, res) => {
 
 /* ---------------- BÁO CÁO (Trưởng/Phó phòng, BGĐ) ---------------- */
 app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) => {
-  const date = req.query.date;
-  if (!date) return res.status(400).json({ error: 'Thiếu ngày.' });
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'Thiếu khoảng ngày.' });
   let department = req.query.department || null;
   if (req.user.role === 'truong_pho') department = req.user.department;
 
-  const params = [date];
-  let where = '';
-  if (department && department !== 'all') {
-    params.push(department);
-    where = 'WHERE u.department = $2';
-  }
-  const { rows } = await pool.query(
-    `SELECT u.username, u.fullname, u.department,
-        COALESCE(l.morning, '[]') AS morning,
-        COALESCE(l.afternoon, '[]') AS afternoon,
-        COALESCE(l.overtime, '[]') AS overtime
-     FROM users u
-     LEFT JOIN logs l ON l.username = u.username AND l.log_date = $1
-     ${where}
-     ORDER BY u.fullname`,
-    params
+  const useDept = department && department !== 'all';
+
+  const usersParams = [];
+  let usersWhere = '';
+  if (useDept) { usersParams.push(department); usersWhere = 'WHERE department = $1'; }
+  const { rows: users } = await pool.query(
+    `SELECT username, fullname, department FROM users ${usersWhere} ORDER BY fullname`,
+    usersParams
   );
-  res.json({ rows, departments: DEPARTMENTS });
+
+  const logParams = [from, to];
+  let logWhere = '';
+  if (useDept) { logParams.push(department); logWhere = 'AND u.department = $3'; }
+  const { rows: logs } = await pool.query(
+    `SELECT l.username, to_char(l.log_date,'YYYY-MM-DD') AS date, l.morning, l.afternoon, l.overtime
+     FROM logs l JOIN users u ON u.username = l.username
+     WHERE l.log_date BETWEEN $1 AND $2 ${logWhere}
+     ORDER BY l.log_date`,
+    logParams
+  );
+
+  const byUser = {};
+  users.forEach(u => { byUser[u.username] = { username: u.username, fullname: u.fullname, department: u.department, days: [] }; });
+  logs.forEach(l => {
+    if (!byUser[l.username]) return;
+    if ((l.morning || []).length + (l.afternoon || []).length + (l.overtime || []).length === 0) return;
+    byUser[l.username].days.push({ date: l.date, morning: l.morning, afternoon: l.afternoon, overtime: l.overtime });
+  });
+
+  res.json({ rows: Object.values(byUser), departments: DEPARTMENTS });
 });
 
 /* ---------------- SAO LƯU & KHÔI PHỤC (chỉ BGĐ) ---------------- */
