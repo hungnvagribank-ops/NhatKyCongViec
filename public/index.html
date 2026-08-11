@@ -109,6 +109,14 @@
   .cal-day.selected .has-dot{background:#fff;}
   .cal-today-btn{margin-top:10px;width:100%;padding:7px;font-size:12px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;cursor:pointer;color:var(--brand-red);font-weight:500;font-family:var(--font-body);}
   .cal-today-btn:hover{background:var(--paper-dark);}
+  .backup-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-top:24px;}
+  .backup-card h3{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--brand-red);margin:0 0 6px;}
+  .backup-card p{font-size:12.5px;color:var(--ink-soft);margin:0 0 14px;line-height:1.6;}
+  .backup-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .backup-row input[type=file]{font-size:12.5px;}
+  .backup-status{font-size:12.5px;color:var(--accent);font-weight:500;}
+  .backup-status.error{color:var(--danger);}
+  .backup-warning{background:var(--gold-soft);color:var(--gold);border-radius:var(--radius);padding:9px 12px;font-size:12px;margin-bottom:14px;line-height:1.5;}
   .session-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
   .session-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .session-title{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--brand-red);}
@@ -603,7 +611,21 @@ function renderUsers(){
             </td>
           </tr>`).join('')}
       </tbody>
-    </table>`;
+    </table>
+    <div class="backup-card">
+      <h3>Sao lưu & khôi phục dữ liệu</h3>
+      <p>Xuất toàn bộ dữ liệu (tài khoản người dùng + nhật ký công việc của tất cả nhân viên) ra 1 file Excel để lưu trữ. Có thể dùng chính file này để khôi phục lại dữ liệu khi cần.</p>
+      <div class="backup-row">
+        <button class="btn btn--ghost btn--sm" id="btn-export-all">⬇ Xuất toàn bộ dữ liệu (Excel)</button>
+        <span class="backup-status" id="export-status"></span>
+      </div>
+      <div class="backup-warning">⚠ File sao lưu chứa dữ liệu của <b>toàn bộ công ty</b> (bao gồm cả thông tin tài khoản đã mã hoá). Chỉ lưu trữ ở nơi an toàn, không chia sẻ ra ngoài.</div>
+      <div class="backup-row">
+        <input type="file" id="restore-file" accept=".xlsx" />
+        <button class="btn btn--danger btn--sm" id="btn-restore">Khôi phục từ file này</button>
+      </div>
+      <span class="backup-status" id="restore-status"></span>
+    </div>`;
   document.getElementById('btn-add-user').addEventListener('click', ()=>{ state.userModal={mode:'add'}; state.userModalError=''; render(); });
   document.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
     const u = state.users.find(x=>x.username===btn.dataset.edit);
@@ -615,6 +637,58 @@ function renderUsers(){
     try{ await api('/api/users/'+encodeURIComponent(btn.dataset.del), {method:'DELETE'}); await loadUsers(); render(); }
     catch(e){ alert(e.message); }
   }));
+  document.getElementById('btn-export-all').addEventListener('click', exportAllDataExcel);
+  document.getElementById('btn-restore').addEventListener('click', restoreAllDataExcel);
+}
+
+async function exportAllDataExcel(){
+  const statusEl = document.getElementById('export-status');
+  if(typeof XLSX === 'undefined'){ statusEl.textContent = 'Không tải được thư viện Excel.'; statusEl.classList.add('error'); return; }
+  statusEl.classList.remove('error'); statusEl.textContent = 'Đang xuất...';
+  try{
+    const data = await api('/api/admin/export');
+    const usersRows = (data.users||[]).map(u=>({
+      username: u.username, password_hash: u.password_hash, fullname: u.fullname, role: u.role, department: u.department||''
+    }));
+    const logsRows = (data.logs||[]).map(l=>({
+      username: l.username, log_date: l.log_date,
+      morning: JSON.stringify(l.morning||[]), afternoon: JSON.stringify(l.afternoon||[]), overtime: JSON.stringify(l.overtime||[])
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(usersRows), 'Users');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logsRows), 'Logs');
+    XLSX.writeFile(wb, `backup_so-nhat-ky-cong-viec_${todayISO()}.xlsx`);
+    statusEl.textContent = `Đã xuất ✓ (${usersRows.length} người dùng, ${logsRows.length} bản ghi nhật ký)`;
+  }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
+}
+
+async function restoreAllDataExcel(){
+  const statusEl = document.getElementById('restore-status');
+  const fileInput = document.getElementById('restore-file');
+  statusEl.classList.remove('error');
+  if(typeof XLSX === 'undefined'){ statusEl.textContent = 'Không tải được thư viện Excel.'; statusEl.classList.add('error'); return; }
+  const file = fileInput.files[0];
+  if(!file){ statusEl.textContent = 'Vui lòng chọn file backup (.xlsx) trước.'; statusEl.classList.add('error'); return; }
+  if(!confirm('Khôi phục sẽ GHI ĐÈ dữ liệu người dùng và nhật ký trùng khớp trong file lên dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?')) return;
+  statusEl.textContent = 'Đang đọc file...';
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const usersSheet = wb.Sheets['Users'];
+    const logsSheet = wb.Sheets['Logs'];
+    if(!usersSheet || !logsSheet) throw new Error('File không đúng định dạng (thiếu sheet Users hoặc Logs).');
+    const usersRows = XLSX.utils.sheet_to_json(usersSheet);
+    const logsRowsRaw = XLSX.utils.sheet_to_json(logsSheet);
+    const logsRows = logsRowsRaw.map(r=>({
+      username: r.username, log_date: r.log_date,
+      morning: JSON.parse(r.morning||'[]'), afternoon: JSON.parse(r.afternoon||'[]'), overtime: JSON.parse(r.overtime||'[]')
+    }));
+    statusEl.textContent = 'Đang khôi phục...';
+    const res = await api('/api/admin/import', {method:'POST', body: JSON.stringify({users: usersRows, logs: logsRows})});
+    statusEl.textContent = `Khôi phục thành công ✓ (${res.usersImported} người dùng, ${res.logsImported} bản ghi nhật ký)`;
+    fileInput.value = '';
+    await loadUsers(); render();
+  }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
 }
 
 /* ============ Modal: thêm/sửa người dùng ============ */
