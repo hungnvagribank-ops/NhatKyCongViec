@@ -261,7 +261,7 @@ async function doLogin(){
     state.token = data.token; state.user = data.user;
     localStorage.setItem('nkcv_token', state.token);
     localStorage.setItem('nkcv_user', JSON.stringify(state.user));
-    state.loginError=''; state.loginBusy=false; state.tab='my-log';
+    state.loginError=''; state.loginBusy=false;
     await bootAfterLogin();
   }catch(e){
     state.loginBusy=false; state.loginError = e.message; render();
@@ -275,7 +275,15 @@ function doLogout(){
 }
 
 async function bootAfterLogin(){
-  await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
+  if(state.user.role === 'bgd'){
+    state.tab = 'report';
+    state.reportLoading = true;
+    render();
+    await loadReport();
+  } else {
+    state.tab = 'my-log';
+    await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
+  }
   render();
 }
 
@@ -301,11 +309,11 @@ function renderShell(){
       </div>
     </div>
     <div class="tabs">
-      <div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>
-      ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">Báo cáo</div>` : ''}
+      ${u.role!=='bgd' ? `<div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>` : ''}
+      ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">${u.role==='bgd'?'Quản trị':'Báo cáo'}</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản lý người dùng</div>` : ''}
       <div class="tabs-spacer"></div>
-      <button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>
+      ${u.role!=='bgd' ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
     </div>
     <div class="main" id="main"></div>
     ${state.pwModalOpen ? renderPasswordModal() : ''}
@@ -313,7 +321,8 @@ function renderShell(){
   `;
   document.getElementById('btn-logout').addEventListener('click', doLogout);
   document.getElementById('btn-pw').addEventListener('click', ()=>{ state.pwModalOpen=true; state.pwError=''; state.pwOk=false; render(); });
-  document.getElementById('btn-export-excel').addEventListener('click', exportMyDataExcel);
+  const exportBtn = document.getElementById('btn-export-excel');
+  if(exportBtn) exportBtn.addEventListener('click', exportMyDataExcel);
   document.querySelectorAll('.tab').forEach(el=>{
     const activateTab = async ()=>{
       state.tab = el.dataset.tab;
@@ -486,7 +495,7 @@ function bindSessionEvents(){
       const desc = card.querySelector('.new-desc').value.trim();
       const status = card.querySelector('.new-status').value;
       const minutes = Number(card.querySelector('.new-min').value)||0;
-      if(!desc || minutes<=0) return;
+      if(!desc || minutes<0) return;
       state.myEntries[sk].push({desc, status, minutes});
       renderMyLog();
     });
@@ -566,9 +575,10 @@ function rowTotalMinutes(days){
 function renderReport(){
   const main = document.getElementById('main');
   const isBgd = state.user.role==='bgd';
+  const groupByDept = isBgd && state.reportDept==='all';
   main.innerHTML = `
     <div class="toolbar-row">
-      <h2 class="section-title">Báo cáo công việc theo khoảng ngày</h2>
+      <h2 class="section-title">${isBgd ? 'Quản trị — Công việc theo phòng ban' : 'Báo cáo công việc theo khoảng ngày'}</h2>
       <button class="btn btn--ghost btn--sm" id="btn-export-report">⬇ Xuất dữ liệu (Excel)</button>
     </div>
     <div class="filters-bar">
@@ -585,31 +595,7 @@ function renderReport(){
       <tbody>
         ${state.reportLoading ? `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</td></tr>` :
           (state.reportRows.length===0 ? `<tr><td colspan="4" style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</td></tr>` :
-          state.reportRows.map(r=>{
-            const total = rowTotalMinutes(r.days);
-            const expanded = state.reportExpanded.has(r.username);
-            const rows = [`<tr>
-              <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
-              <td><div class="emp-name">${esc(r.fullname)} ${r.role==='truong_pho'?`<span class="role-tag role-tag--truong_pho" style="margin-left:6px;">${ROLE_LABEL.truong_pho}</span>`:''}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
-              <td>${(r.days||[]).length} ngày</td>
-              <td><b>${fmtHM(total)}</b></td>
-            </tr>`];
-            if(expanded){
-              rows.push(`<tr><td></td><td colspan="3" style="padding:0 14px 16px;">
-                ${(r.days||[]).length===0 ? `<span class="cell-empty">Chưa có ghi nhận nào trong khoảng ngày này.</span>` : `
-                <table class="data-table" style="border-color:var(--paper-dark);">
-                  <thead><tr><th>Ngày</th><th>Buổi sáng</th><th>Buổi chiều</th><th>Ngoài giờ</th></tr></thead>
-                  <tbody>
-                    ${r.days.map(d=>`<tr>
-                      <td style="white-space:nowrap;font-family:var(--font-mono);">${displayDate(d.date)}</td>
-                      ${SESSION_KEYS.map(sk=>`<td>${renderEntryCell(d[sk])}</td>`).join('')}
-                    </tr>`).join('')}
-                  </tbody>
-                </table>`}
-              </td></tr>`);
-            }
-            return rows.join('');
-          }).join(''))}
+          (groupByDept ? renderReportRowsGrouped(state.reportRows, isBgd) : renderReportRowsFlat(state.reportRows, isBgd)))}
       </tbody>
     </table>`;
   document.getElementById('rep-from').addEventListener('change', async e=>{ state.reportFrom=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
@@ -624,6 +610,49 @@ function renderReport(){
     });
   });
   document.getElementById('btn-export-report').addEventListener('click', exportReportExcel);
+}
+
+function renderReportRowsFlat(rows, isBgd){
+  return rows.map(r=>renderReportRow(r, isBgd)).join('');
+}
+function renderReportRowsGrouped(rows, isBgd){
+  const groups = {};
+  const order = [];
+  rows.forEach(r=>{
+    const dept = r.department || 'Chưa phân phòng ban';
+    if(!groups[dept]){ groups[dept]=[]; order.push(dept); }
+    groups[dept].push(r);
+  });
+  const orderedDepts = state.departments.filter(d=>groups[d]).concat(order.filter(d=>!state.departments.includes(d)));
+  return orderedDepts.map(dept=>`
+    <tr><td colspan="4" style="background:var(--paper-dark);padding:9px 14px;font-family:var(--font-display);font-weight:700;color:var(--brand-red);font-size:13.5px;">${esc(dept)}</td></tr>
+    ${groups[dept].map(r=>renderReportRow(r, isBgd)).join('')}
+  `).join('');
+}
+function renderReportRow(r, isBgd){
+  const total = rowTotalMinutes(r.days);
+  const expanded = state.reportExpanded.has(r.username);
+  const rows = [`<tr>
+    <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
+    <td><div class="emp-name">${esc(r.fullname)} ${r.role==='truong_pho'?`<span class="role-tag role-tag--truong_pho" style="margin-left:6px;">${ROLE_LABEL.truong_pho}</span>`:''}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
+    <td>${(r.days||[]).length} ngày</td>
+    <td><b>${fmtHM(total)}</b></td>
+  </tr>`];
+  if(expanded){
+    rows.push(`<tr><td></td><td colspan="3" style="padding:0 14px 16px;">
+      ${(r.days||[]).length===0 ? `<span class="cell-empty">Chưa có ghi nhận nào trong khoảng ngày này.</span>` : `
+      <table class="data-table" style="border-color:var(--paper-dark);">
+        <thead><tr><th>Ngày</th><th>Buổi sáng</th><th>Buổi chiều</th><th>Ngoài giờ</th></tr></thead>
+        <tbody>
+          ${r.days.map(d=>`<tr>
+            <td style="white-space:nowrap;font-family:var(--font-mono);">${displayDate(d.date)}</td>
+            ${SESSION_KEYS.map(sk=>`<td>${renderEntryCell(d[sk])}</td>`).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>`}
+    </td></tr>`);
+  }
+  return rows.join('');
 }
 
 function exportReportExcel(){
