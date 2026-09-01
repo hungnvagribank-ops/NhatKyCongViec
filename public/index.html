@@ -315,7 +315,8 @@ async function bootAfterLogin(){
 function renderShell(){
   const u = state.user;
   const noPersonalLog = u.role==='bgd' || u.role==='admin';
-  const canSeeReport = u.role !== 'nhan_vien';
+  const canSeeReport = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd';
+  const canSeeDuration = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd' || u.role==='admin';
   const canManageUsers = u.role === 'admin';
 
   app.innerHTML = `
@@ -336,6 +337,7 @@ function renderShell(){
     <div class="tabs">
       ${!noPersonalLog ? `<div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>` : ''}
       ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">Báo cáo</div>` : ''}
+      ${canSeeDuration ? `<div class="tab ${state.tab==='duration'?'active':''}" data-tab="duration" role="tab" tabindex="0" aria-selected="${state.tab==='duration'}">Thời lượng</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
       ${!noPersonalLog ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
@@ -351,7 +353,7 @@ function renderShell(){
   document.querySelectorAll('.tab').forEach(el=>{
     const activateTab = async ()=>{
       state.tab = el.dataset.tab;
-      if(state.tab==='report'){ state.reportLoading=true; render(); await loadReport(); }
+      if(state.tab==='report' || state.tab==='duration'){ state.reportLoading=true; render(); await loadReport(); }
       else if(state.tab==='users'){ await loadUsers(); }
       render();
     };
@@ -361,6 +363,7 @@ function renderShell(){
 
   if(state.tab==='my-log') renderMyLog();
   else if(state.tab==='report') renderReport();
+  else if(state.tab==='duration') renderReportChart();
   else if(state.tab==='users') renderUsers();
 
   bindModalEvents();
@@ -598,7 +601,6 @@ function rowTotalMinutes(days){
 }
 
 function renderReport(){
-  if(state.user.role==='admin'){ renderReportChart(); return; }
   const main = document.getElementById('main');
   const isBgd = state.user.role==='bgd';
   const groupByDept = isBgd && state.reportDept==='all';
@@ -652,30 +654,34 @@ function workOtMinutes(days){
 
 function renderReportChart(){
   const main = document.getElementById('main');
+  const canPickDept = state.user.role==='bgd' || state.user.role==='admin';
+  const title = canPickDept ? 'Thời lượng — Thời gian làm việc theo phòng ban' : `Thời lượng — Phòng ${state.user.department}`;
   main.innerHTML = `
     <div class="toolbar-row">
-      <h2 class="section-title">Báo cáo — Thời gian làm việc theo phòng ban</h2>
+      <h2 class="section-title">${esc(title)}</h2>
       <button class="btn btn--ghost btn--sm" id="btn-export-report">⬇ Xuất dữ liệu (Excel)</button>
     </div>
     <div class="filters-bar">
       <div class="field"><label for="rep-from">Từ ngày</label><input type="date" id="rep-from" value="${state.reportFrom}" /></div>
       <div class="field"><label for="rep-to">Đến ngày</label><input type="date" id="rep-to" value="${state.reportTo}" /></div>
-      <div class="field"><label for="rep-dept">Phòng ban</label>
+      ${canPickDept ? `<div class="field"><label for="rep-dept">Phòng ban</label>
         <select id="rep-dept">
           <option value="all" ${state.reportDept==='all'?'selected':''}>Tất cả phòng ban</option>
           ${state.departments.map(d=>`<option value="${esc(d)}" ${state.reportDept===d?'selected':''}>${esc(d)}</option>`).join('')}
-        </select></div>
+        </select></div>` : ''}
     </div>
     <div class="chart-wrap" id="chart-wrap">
       ${state.reportLoading ? `<div style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</div>` : renderChartBody()}
     </div>`;
   document.getElementById('rep-from').addEventListener('change', async e=>{ state.reportFrom=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
   document.getElementById('rep-to').addEventListener('change', async e=>{ state.reportTo=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
-  document.getElementById('rep-dept').addEventListener('change', async e=>{ state.reportDept=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
+  const deptSel = document.getElementById('rep-dept');
+  if(deptSel) deptSel.addEventListener('change', async e=>{ state.reportDept=e.target.value; state.reportLoading=true; render(); await loadReport(); render(); });
   document.getElementById('btn-export-report').addEventListener('click', exportReportExcel);
 }
 
 function renderChartBody(){
+  const canPickDept = state.user.role==='bgd' || state.user.role==='admin';
   const rows = (state.reportRows||[]).map(r=>({ ...r, ...workOtMinutes(r.days) }));
   if(rows.length===0) return `<div style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</div>`;
   const maxVal = Math.max(1, ...rows.map(r=>Math.max(r.work, r.ot)));
@@ -692,7 +698,7 @@ function renderChartBody(){
     <span class="legend-item"><span class="legend-dot ot"></span>Ngoài giờ</span>
   </div>`;
 
-  const groupByDept = state.reportDept==='all';
+  const groupByDept = canPickDept && state.reportDept==='all';
   const rowHtml = r => `
     <div class="chart-row">
       <div><div class="chart-name">${esc(r.fullname)}</div><span class="chart-role-sub">${esc(ROLE_LABEL[r.role]||'')}</span></div>
@@ -770,7 +776,6 @@ function renderReportRow(r, isBgd){
 
 function exportReportExcel(){
   if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
-  const isBgd = state.user.role==='bgd';
   const rows = [];
   (state.reportRows||[]).forEach(r=>{
     (r.days||[]).forEach(d=>{
@@ -796,7 +801,8 @@ function exportReportExcel(){
   ws['!cols'] = [{wch:22},{wch:26},{wch:14},{wch:12},{wch:50},{wch:26},{wch:16}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Báo cáo công việc');
-  const deptTag = isBgd ? (state.reportDept==='all' ? 'tat-ca-phong-ban' : state.reportDept.replace(/\s+/g,'-')) : state.user.department.replace(/\s+/g,'-');
+  const canPickDept = state.user.role==='bgd' || state.user.role==='admin';
+  const deptTag = canPickDept ? (state.reportDept==='all' ? 'tat-ca-phong-ban' : state.reportDept.replace(/\s+/g,'-')) : state.user.department.replace(/\s+/g,'-');
   const fileName = `bao-cao-cong-viec_${deptTag}_${state.reportFrom}_${state.reportTo}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }
