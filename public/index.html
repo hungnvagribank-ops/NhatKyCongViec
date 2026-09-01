@@ -76,10 +76,12 @@
   .user-chip{text-align:right;}
   .user-name{font-size:14px;font-weight:600;}
   .user-title{font-size:12px;color:var(--ink-soft);}
-  .role-tag{display:inline-block;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2.5px 8px;border-radius:2px;margin-top:4px;}
+  .role-tag{display:inline-block;font-family:var(--font-body);font-size:11.5px;font-weight:600;letter-spacing:.01em;padding:3px 9px;border-radius:3px;margin-top:4px;}
   .role-tag--nhan_vien{background:var(--accent-soft);color:var(--accent);}
-  .role-tag--truong_pho{background:var(--gold-soft);color:var(--gold);}
+  .role-tag--truong_phong{background:var(--gold-soft);color:var(--gold);}
+  .role-tag--pho_phong{background:#DCE6ED;color:#395C73;}
   .role-tag--bgd{background:#233c2c;color:#F1E4C4;}
+  .role-tag--admin{background:var(--brand-red);color:#fff;}
   .tabs{display:flex;gap:2px;padding:0 24px;border-bottom:2px solid var(--brand-gold);background:linear-gradient(135deg,var(--brand-red),var(--brand-red-dark));overflow-x:auto;box-shadow:var(--shadow-sm);position:relative;z-index:1;}
   .tab{padding:13px 18px;font-size:13.5px;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;margin-bottom:-2px;}
   .tab.active{color:#fff;border-bottom-color:var(--brand-gold);font-weight:600;background:rgba(255,255,255,0.06);}
@@ -183,7 +185,7 @@
 const SESSION_KEYS = ['morning','afternoon','overtime'];
 const SESSION_LABEL = {morning:'Buổi sáng', afternoon:'Buổi chiều', overtime:'Ngoài giờ'};
 const SESSION_CAP = {morning:240, afternoon:240, overtime:720};
-const ROLE_LABEL = {nhan_vien:'Nhân viên', truong_pho:'Trưởng/Phó phòng', bgd:'Ban giám đốc'};
+const ROLE_LABEL = {nhan_vien:'Nhân viên', truong_phong:'Trưởng phòng', pho_phong:'Phó phòng', bgd:'Ban giám đốc', admin:'Quản trị'};
 const STATUS_OPTIONS = [
   {value:'hoan_thanh_dung_han', label:'Hoàn thành đúng hạn'},
   {value:'hoan_thanh_sau_han', label:'Hoàn thành sau hạn'},
@@ -275,7 +277,10 @@ function doLogout(){
 }
 
 async function bootAfterLogin(){
-  if(state.user.role === 'bgd'){
+  if(state.user.role === 'admin'){
+    state.tab = 'users';
+    await loadUsers();
+  } else if(state.user.role === 'bgd'){
     state.tab = 'report';
     state.reportLoading = true;
     render();
@@ -290,14 +295,15 @@ async function bootAfterLogin(){
 /* ============ Shell ============ */
 function renderShell(){
   const u = state.user;
-  const canSeeReport = u.role !== 'nhan_vien';
-  const canManageUsers = u.role === 'bgd';
+  const noPersonalLog = u.role==='bgd' || u.role==='admin';
+  const canSeeReport = u.role !== 'nhan_vien' && u.role !== 'admin';
+  const canManageUsers = u.role === 'admin';
 
   app.innerHTML = `
     <div class="topbar">
       <div class="brand">
         <div class="stamp"><img src="agribank-logo.png" alt="Agribank" /></div>
-        <div><p class="brand-title">Sổ Nhật Ký Công Việc</p><p class="brand-sub">${esc(u.department || 'Ban giám đốc')}</p></div>
+        <div><p class="brand-title">Sổ Nhật Ký Công Việc</p><p class="brand-sub">${esc(u.department || ROLE_LABEL[u.role])}</p></div>
       </div>
       <div class="user-area">
         <div class="user-chip">
@@ -309,11 +315,11 @@ function renderShell(){
       </div>
     </div>
     <div class="tabs">
-      ${u.role!=='bgd' ? `<div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>` : ''}
-      ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">${u.role==='bgd'?'Quản trị':'Báo cáo'}</div>` : ''}
-      ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản lý người dùng</div>` : ''}
+      ${!noPersonalLog ? `<div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>` : ''}
+      ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">Báo cáo</div>` : ''}
+      ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
-      ${u.role!=='bgd' ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
+      ${!noPersonalLog ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
     </div>
     <div class="main" id="main"></div>
     ${state.pwModalOpen ? renderPasswordModal() : ''}
@@ -578,7 +584,7 @@ function renderReport(){
   const groupByDept = isBgd && state.reportDept==='all';
   main.innerHTML = `
     <div class="toolbar-row">
-      <h2 class="section-title">${isBgd ? 'Quản trị — Công việc theo phòng ban' : 'Báo cáo công việc theo khoảng ngày'}</h2>
+      <h2 class="section-title">${isBgd ? 'Báo cáo — Công việc theo phòng ban' : 'Báo cáo công việc theo khoảng ngày'}</h2>
       <button class="btn btn--ghost btn--sm" id="btn-export-report">⬇ Xuất dữ liệu (Excel)</button>
     </div>
     <div class="filters-bar">
@@ -634,7 +640,7 @@ function renderReportRow(r, isBgd){
   const expanded = state.reportExpanded.has(r.username);
   const rows = [`<tr>
     <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
-    <td><div class="emp-name">${esc(r.fullname)} ${r.role==='truong_pho'?`<span class="role-tag role-tag--truong_pho" style="margin-left:6px;">${ROLE_LABEL.truong_pho}</span>`:''}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
+    <td><div class="emp-name">${esc(r.fullname)} ${(r.role==='truong_phong'||r.role==='pho_phong')?`<span class="role-tag role-tag--${r.role}" style="margin-left:6px;">${ROLE_LABEL[r.role]}</span>`:''}</div>${isBgd?`<div class="emp-dept">${esc(r.department)}</div>`:''}</td>
     <td>${(r.days||[]).length} ngày</td>
     <td><b>${fmtHM(total)}</b></td>
   </tr>`];
@@ -703,7 +709,7 @@ function renderUsers(){
   const main = document.getElementById('main');
   main.innerHTML = `
     <div class="toolbar-row">
-      <h2 class="section-title">Quản lý người dùng</h2>
+      <h2 class="section-title">Quản trị — Người dùng hệ thống</h2>
       <button class="btn btn--primary" style="width:auto;" id="btn-add-user">+ Thêm người dùng</button>
     </div>
     <table class="data-table">
@@ -818,8 +824,10 @@ function renderUserModal(){
       <div class="field"><label>Cấp bậc</label>
         <select id="um-role">
           <option value="nhan_vien" ${d.role==='nhan_vien'?'selected':''}>Nhân viên</option>
-          <option value="truong_pho" ${d.role==='truong_pho'?'selected':''}>Trưởng/Phó phòng</option>
+          <option value="pho_phong" ${d.role==='pho_phong'?'selected':''}>Phó phòng</option>
+          <option value="truong_phong" ${d.role==='truong_phong'?'selected':''}>Trưởng phòng</option>
           <option value="bgd" ${d.role==='bgd'?'selected':''}>Ban giám đốc</option>
+          <option value="admin" ${d.role==='admin'?'selected':''}>Quản trị</option>
         </select></div>
       <div class="field" id="um-dept-field"><label>Phòng ban</label>
         <select id="um-department">
@@ -861,7 +869,7 @@ function bindModalEvents(){
   if(userOverlay){
     const roleSel = document.getElementById('um-role');
     const deptField = document.getElementById('um-dept-field');
-    function syncDeptVisibility(){ deptField.style.display = roleSel.value==='bgd' ? 'none' : 'block'; }
+    function syncDeptVisibility(){ deptField.style.display = (roleSel.value==='bgd' || roleSel.value==='admin') ? 'none' : 'block'; }
     syncDeptVisibility();
     roleSel.addEventListener('change', syncDeptVisibility);
     document.getElementById('um-cancel').addEventListener('click', ()=>{ state.userModal=null; render(); });
@@ -871,7 +879,7 @@ function bindModalEvents(){
       const password = document.getElementById('um-password').value;
       const fullname = document.getElementById('um-fullname').value.trim();
       const role = document.getElementById('um-role').value;
-      const department = role==='bgd' ? '' : document.getElementById('um-department').value;
+      const department = (role==='bgd' || role==='admin') ? '' : document.getElementById('um-department').value;
       if(!isEdit && (!username || !password || !fullname)){ state.userModalError='Vui lòng nhập đầy đủ thông tin bắt buộc.'; render(); return; }
       try{
         if(isEdit){
