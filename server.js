@@ -36,10 +36,23 @@ async function initDb() {
       username TEXT PRIMARY KEY,
       password_hash TEXT NOT NULL,
       fullname TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('bgd','truong_pho','nhan_vien')),
+      role TEXT NOT NULL CHECK (role IN ('admin','bgd','truong_phong','pho_phong','nhan_vien')),
       department TEXT NOT NULL DEFAULT ''
     );
   `);
+  // Di chuyển dữ liệu cũ: gộp vai trò 'truong_pho' (bản cũ) sang 'truong_phong', và cập nhật lại ràng buộc CHECK
+  // cho các database đã được tạo từ trước khi có vai trò 'phó phòng'.
+  try {
+    await pool.query(`UPDATE users SET role = 'truong_phong' WHERE role = 'truong_pho'`);
+  } catch (e) { /* cột/giá trị không tồn tại thì bỏ qua */ }
+  try {
+    // Tài khoản 'admin' (quản trị hệ thống) tách khỏi vai trò 'bgd' (Ban giám đốc thực tế).
+    await pool.query(`UPDATE users SET role = 'admin' WHERE username = 'admin' AND role = 'bgd'`);
+  } catch (e) { /* bỏ qua nếu chưa có tài khoản admin */ }
+  try {
+    await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+    await pool.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','bgd','truong_phong','pho_phong','nhan_vien'))`);
+  } catch (e) { console.warn('Không thể cập nhật ràng buộc role:', e.message); }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS logs (
       username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
@@ -55,7 +68,7 @@ async function initDb() {
     const hash = await bcrypt.hash('admin123', 10);
     await pool.query(
       'INSERT INTO users (username, password_hash, fullname, role, department) VALUES ($1,$2,$3,$4,$5)',
-      ['admin', hash, 'Quản trị viên', 'bgd', '']
+      ['admin', hash, 'Quản trị viên', 'admin', '']
     );
     console.log('Đã tạo tài khoản quản trị mặc định: admin / admin123 — hãy đăng nhập và đổi mật khẩu ngay.');
   }
@@ -126,16 +139,16 @@ app.put('/api/me/password', auth, async (req, res) => {
 });
 
 /* ---------------- USERS (chỉ BGĐ) ---------------- */
-app.get('/api/users', auth, requireRole('bgd'), async (req, res) => {
+app.get('/api/users', auth, requireRole('admin'), async (req, res) => {
   const { rows } = await pool.query('SELECT username, fullname, role, department FROM users ORDER BY fullname');
   res.json({ users: rows, departments: DEPARTMENTS });
 });
 
-app.post('/api/users', auth, requireRole('bgd'), async (req, res) => {
+app.post('/api/users', auth, requireRole('admin'), async (req, res) => {
   const { username, password, fullname, role, department } = req.body || {};
   if (!username || !password || !fullname || !role) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc.' });
-  if (!['bgd', 'truong_pho', 'nhan_vien'].includes(role)) return res.status(400).json({ error: 'Cấp bậc không hợp lệ.' });
-  if (role !== 'bgd' && !DEPARTMENTS.includes(department)) return res.status(400).json({ error: 'Vui lòng chọn phòng ban hợp lệ.' });
+  if (!['admin', 'bgd', 'truong_phong', 'pho_phong', 'nhan_vien'].includes(role)) return res.status(400).json({ error: 'Cấp bậc không hợp lệ.' });
+  if (role !== 'bgd' && role !== 'admin' && !DEPARTMENTS.includes(department)) return res.status(400).json({ error: 'Vui lòng chọn phòng ban hợp lệ.' });
   try {
     const exists = await pool.query('SELECT 1 FROM users WHERE username=$1', [username]);
     if (exists.rows.length) return res.status(409).json({ error: 'Tên đăng nhập đã tồn tại.' });
@@ -151,11 +164,11 @@ app.post('/api/users', auth, requireRole('bgd'), async (req, res) => {
   }
 });
 
-app.put('/api/users/:username', auth, requireRole('bgd'), async (req, res) => {
+app.put('/api/users/:username', auth, requireRole('admin'), async (req, res) => {
   const { username } = req.params;
   const { password, fullname, role, department } = req.body || {};
   if (!fullname || !role) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc.' });
-  if (role !== 'bgd' && !DEPARTMENTS.includes(department)) return res.status(400).json({ error: 'Vui lòng chọn phòng ban hợp lệ.' });
+  if (role !== 'bgd' && role !== 'admin' && !DEPARTMENTS.includes(department)) return res.status(400).json({ error: 'Vui lòng chọn phòng ban hợp lệ.' });
   try {
     if (password) {
       const hash = await bcrypt.hash(password, 10);
@@ -174,7 +187,7 @@ app.put('/api/users/:username', auth, requireRole('bgd'), async (req, res) => {
   }
 });
 
-app.delete('/api/users/:username', auth, requireRole('bgd'), async (req, res) => {
+app.delete('/api/users/:username', auth, requireRole('admin'), async (req, res) => {
   if (req.params.username === req.user.username) return res.status(400).json({ error: 'Không thể xoá tài khoản đang đăng nhập.' });
   await pool.query('DELETE FROM users WHERE username=$1', [req.params.username]);
   res.json({ ok: true });
@@ -215,9 +228,9 @@ app.get('/api/logs-month', auth, async (req, res) => {
   if (!year || !month) return res.status(400).json({ error: 'Thiếu năm/tháng.' });
   let targetUser = req.user.username;
   if (username && username !== req.user.username) {
-    if (req.user.role === 'bgd') {
+    if (req.user.role === 'bgd' || req.user.role === 'admin') {
       targetUser = username;
-    } else if (req.user.role === 'truong_pho') {
+    } else if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') {
       const { rows } = await pool.query('SELECT department FROM users WHERE username=$1', [username]);
       if (!rows[0] || rows[0].department !== req.user.department) {
         return res.status(403).json({ error: 'Bạn không có quyền xem dữ liệu của người này.' });
@@ -237,19 +250,19 @@ app.get('/api/logs-month', auth, async (req, res) => {
 });
 
 /* ---------------- BÁO CÁO (Trưởng/Phó phòng, BGĐ) ---------------- */
-app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) => {
+app.get('/api/report', auth, requireRole('truong_phong', 'pho_phong', 'bgd', 'admin'), async (req, res) => {
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: 'Thiếu khoảng ngày.' });
   let department = req.query.department || null;
-  if (req.user.role === 'truong_pho') department = req.user.department;
+  if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') department = req.user.department;
 
   const useDept = department && department !== 'all';
 
   const usersParams = [];
-  let usersWhere = '';
-  if (useDept) { usersParams.push(department); usersWhere = 'WHERE department = $1'; }
+  let usersWhere = "WHERE role != 'admin'";
+  if (useDept) { usersParams.push(department); usersWhere += ' AND department = $1'; }
   const { rows: users } = await pool.query(
-    `SELECT username, fullname, department, role FROM users ${usersWhere} ORDER BY (role = 'truong_pho') DESC, fullname`,
+    `SELECT username, fullname, department, role FROM users ${usersWhere} ORDER BY (role = 'truong_phong') DESC, (role = 'pho_phong') DESC, fullname`,
     usersParams
   );
 
@@ -276,7 +289,7 @@ app.get('/api/report', auth, requireRole('truong_pho', 'bgd'), async (req, res) 
 });
 
 /* ---------------- SAO LƯU & KHÔI PHỤC (chỉ BGĐ) ---------------- */
-app.get('/api/admin/export', auth, requireRole('bgd'), async (req, res) => {
+app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
   try {
     const usersRes = await pool.query('SELECT username, password_hash, fullname, role, department FROM users ORDER BY username');
     const logsRes = await pool.query(
@@ -290,7 +303,7 @@ app.get('/api/admin/export', auth, requireRole('bgd'), async (req, res) => {
   }
 });
 
-app.post('/api/admin/import', auth, requireRole('bgd'), async (req, res) => {
+app.post('/api/admin/import', auth, requireRole('admin'), async (req, res) => {
   const { users, logs } = req.body || {};
   if (!Array.isArray(users) || !Array.isArray(logs)) return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
   const client = await pool.connect();
