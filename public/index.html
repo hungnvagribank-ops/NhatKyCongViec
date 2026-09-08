@@ -147,6 +147,36 @@
   .chart-bar-fill.work{background:var(--chart-blue);}
   .chart-bar-fill.ot{background:var(--brand-red);}
   .chart-bar-value{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);white-space:nowrap;min-width:64px;}
+
+  /* Đánh giá hàng tháng */
+  .eval-subtabs{display:flex;gap:8px;margin-bottom:18px;}
+  .eval-subtab{padding:7px 14px;font-size:13px;font-weight:500;border-radius:var(--radius);border:1px solid var(--line);background:#fff;color:var(--ink-soft);cursor:pointer;}
+  .eval-subtab.active{background:var(--brand-red);color:#fff;border-color:var(--brand-red);}
+  .eval-header-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 22px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+  .eval-header-card .name{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--brand-red);}
+  .eval-header-card .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .eval-badges{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+  .eval-badge{font-size:11px;font-family:var(--font-mono);padding:3px 9px;border-radius:2px;background:var(--paper-dark);color:var(--ink-soft);}
+  .eval-badge.done{background:var(--accent-soft);color:var(--accent);}
+  .eval-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);}
+  .eval-table th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);font-family:var(--font-mono);font-weight:500;padding:9px 8px;border-bottom:1px solid var(--line);background:var(--paper-dark);text-align:center;}
+  .eval-table th.eval-th-criteria{text-align:left;padding-left:14px;}
+  .eval-table td{padding:9px 8px;font-size:12.5px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle;}
+  .eval-table tr:last-child td{border-bottom:none;}
+  .eval-table td.eval-td-criteria{text-align:left;padding-left:14px;}
+  .eval-crit-label{font-weight:600;color:var(--ink);}
+  .eval-crit-desc{font-size:11px;color:var(--ink-soft);display:block;margin-top:1px;}
+  .eval-crit-max{font-size:10px;color:var(--ink-soft);font-family:var(--font-mono);display:block;}
+  .eval-score-input{width:56px;padding:6px;border:1px solid var(--line);border-radius:var(--radius);text-align:center;font-family:var(--font-mono);font-size:13px;}
+  .eval-score-input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
+  .eval-score-readonly{font-family:var(--font-mono);color:var(--ink);}
+  .eval-score-na{font-size:11px;color:var(--ink-soft);font-style:italic;}
+  .eval-avg{font-weight:700;color:var(--brand-red);font-family:var(--font-mono);}
+  .eval-note-input{width:100%;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);font-size:12px;}
+  .eval-total-row td{background:var(--paper-dark);font-weight:700;}
+  .eval-save-bar{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-top:14px;}
+  .eval-list-row-name{font-weight:600;}
+  .eval-list-row-sub{font-size:11px;color:var(--ink-soft);}
   .session-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brand-red);border-radius:var(--radius);padding:20px 22px;margin-bottom:16px;box-shadow:var(--shadow-sm);}
   .session-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
   .session-title{font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--brand-red);}
@@ -241,6 +271,8 @@ const state = {
   myFlash:'', myLoading:false,
   calYear: new Date().getFullYear(), calMonth: new Date().getMonth()+1, monthHasData: new Set(),
   reportFrom: todayISO(), reportTo: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false, reportExpanded: new Set(),
+  evalYear: new Date().getFullYear(), evalMonth: new Date().getMonth()+1, evalSubTab:'self',
+  evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{},
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
   pwModalOpen:false, pwError:'', pwOk:false
 };
@@ -317,6 +349,7 @@ function renderShell(){
   const noPersonalLog = u.role==='bgd' || u.role==='admin';
   const canSeeReport = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd';
   const canSeeDuration = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd' || u.role==='admin';
+  const canSeeEval = u.role!=='admin';
   const canManageUsers = u.role === 'admin';
 
   app.innerHTML = `
@@ -338,6 +371,7 @@ function renderShell(){
       ${!noPersonalLog ? `<div class="tab ${state.tab==='my-log'?'active':''}" data-tab="my-log" role="tab" tabindex="0" aria-selected="${state.tab==='my-log'}">Nhật ký của tôi</div>` : ''}
       ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">Báo cáo</div>` : ''}
       ${canSeeDuration ? `<div class="tab ${state.tab==='duration'?'active':''}" data-tab="duration" role="tab" tabindex="0" aria-selected="${state.tab==='duration'}">Thời lượng</div>` : ''}
+      ${canSeeEval ? `<div class="tab ${state.tab==='evaluation'?'active':''}" data-tab="evaluation" role="tab" tabindex="0" aria-selected="${state.tab==='evaluation'}">Đánh giá</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
       ${!noPersonalLog ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
@@ -355,6 +389,7 @@ function renderShell(){
       state.tab = el.dataset.tab;
       if(state.tab==='report' || state.tab==='duration'){ state.reportLoading=true; render(); await loadReport(); }
       else if(state.tab==='users'){ await loadUsers(); }
+      else if(state.tab==='evaluation'){ render(); await bootEvalTab(); }
       render();
     };
     el.addEventListener('click', activateTab);
@@ -364,6 +399,7 @@ function renderShell(){
   if(state.tab==='my-log') renderMyLog();
   else if(state.tab==='report') renderReport();
   else if(state.tab==='duration') renderReportChart();
+  else if(state.tab==='evaluation') renderEvaluation();
   else if(state.tab==='users') renderUsers();
 
   bindModalEvents();
@@ -811,6 +847,298 @@ function renderEntryCell(entries){
   return entries.map(e=>`<span class="pill">${esc(e.desc||'(không có mô tả)')} · ${esc(STATUS_LABEL[e.status]||'—')} · ${fmtHM(Number(e.minutes)||0)}</span>`).join(' ');
 }
 
+/* ============ Tab: Đánh giá hàng tháng ============ */
+async function bootEvalTab(){
+  state.evalCache = {};
+  if(state.user.role==='truong_phong'){
+    if(state.evalSubTab==='team') await loadEvalList();
+    else await loadEvalDetail(state.user.username);
+  } else if(state.user.role==='bgd'){
+    await loadEvalList();
+  } else {
+    await loadEvalDetail(state.user.username);
+  }
+}
+
+async function loadEvalList(){
+  state.evalListLoading = true;
+  try{
+    let url = `/api/evaluations?year=${state.evalYear}&month=${state.evalMonth}`;
+    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.evalListDept)}`;
+    const data = await api(url);
+    state.evalListRows = data.rows; state.departments = data.departments;
+  }catch(e){ state.evalListRows = []; }
+  state.evalListLoading = false;
+}
+
+async function loadEvalDetail(username){
+  try{
+    const data = await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}`);
+    state.evalCache[username] = data;
+  }catch(e){ state.evalCache[username] = null; }
+}
+
+function evalRowAverage(row){
+  return (Number(row.nld||0)+Number(row.ld_phong||0)+Number(row.pho_truong||0)+Number(row.truong_don_vi||0))/4;
+}
+
+function renderEvaluation(){
+  const main = document.getElementById('main');
+  const role = state.user.role;
+  let bodyHtml = '';
+  if(role==='truong_phong'){
+    bodyHtml = `
+      <div class="eval-subtabs">
+        <button class="eval-subtab ${state.evalSubTab==='self'?'active':''}" data-subtab="self">Đánh giá của tôi</button>
+        <button class="eval-subtab ${state.evalSubTab==='team'?'active':''}" data-subtab="team">Chấm điểm nhân viên phòng ban</button>
+      </div>
+      ${state.evalSubTab==='self' ? renderEvalFormHtml(state.user.username) : renderEvalListHtml()}`;
+  } else if(role==='bgd'){
+    bodyHtml = renderEvalListHtml();
+  } else {
+    bodyHtml = renderEvalFormHtml(state.user.username);
+  }
+  main.innerHTML = `
+    <div class="toolbar-row"><h2 class="section-title">Đánh giá mức độ hoàn thành công việc${role==='bgd'?' — Toàn công ty':''}</h2></div>
+    ${renderEvalMonthPicker()}
+    <div id="eval-body">${bodyHtml}</div>`;
+
+  bindEvalTopControls();
+  bindEvalListEvents();
+  document.querySelectorAll('.eval-form-wrap').forEach(el=>bindEvalFormEvents(el.dataset.evalFormUser));
+}
+
+function renderEvalMonthPicker(){
+  const months = Array.from({length:12}, (_,i)=>i+1);
+  const years = [state.evalYear-1, state.evalYear, state.evalYear+1];
+  return `
+    <div class="filters-bar">
+      <div class="field"><label for="eval-month">Tháng</label>
+        <select id="eval-month">${months.map(m=>`<option value="${m}" ${m===state.evalMonth?'selected':''}>Tháng ${m}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label for="eval-year">Năm</label>
+        <select id="eval-year">${years.map(y=>`<option value="${y}" ${y===state.evalYear?'selected':''}>${y}</option>`).join('')}</select>
+      </div>
+      ${state.user.role==='bgd' ? `<div class="field"><label for="eval-dept">Phòng ban</label>
+        <select id="eval-dept">
+          <option value="all" ${state.evalListDept==='all'?'selected':''}>Tất cả phòng ban</option>
+          ${state.departments.map(d=>`<option value="${esc(d)}" ${state.evalListDept===d?'selected':''}>${esc(d)}</option>`).join('')}
+        </select></div>` : ''}
+    </div>`;
+}
+
+function bindEvalTopControls(){
+  const monthSel = document.getElementById('eval-month');
+  const yearSel = document.getElementById('eval-year');
+  const deptSel = document.getElementById('eval-dept');
+  const refresh = async ()=>{ await bootEvalTab(); renderEvaluation(); };
+  if(monthSel) monthSel.addEventListener('change', async e=>{ state.evalMonth=Number(e.target.value); state.evalExpanded=new Set(); await refresh(); });
+  if(yearSel) yearSel.addEventListener('change', async e=>{ state.evalYear=Number(e.target.value); state.evalExpanded=new Set(); await refresh(); });
+  if(deptSel) deptSel.addEventListener('change', async e=>{ state.evalListDept=e.target.value; state.evalExpanded=new Set(); await refresh(); });
+  document.querySelectorAll('.eval-subtab').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      state.evalSubTab = btn.dataset.subtab;
+      state.evalExpanded = new Set();
+      if(state.evalSubTab==='team') await loadEvalList();
+      else await loadEvalDetail(state.user.username);
+      renderEvaluation();
+    });
+  });
+}
+
+function bindEvalListEvents(){
+  document.querySelectorAll('[data-eval-toggle]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const u = btn.dataset.evalToggle;
+      if(state.evalExpanded.has(u)){ state.evalExpanded.delete(u); }
+      else { state.evalExpanded.add(u); if(!state.evalCache[u]) await loadEvalDetail(u); }
+      renderEvaluation();
+    });
+  });
+}
+
+function renderEvalListHtml(){
+  if(state.evalListLoading) return `<div style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</div>`;
+  if(state.evalListRows.length===0) return `<div style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</div>`;
+  const isBgd = state.user.role==='bgd';
+  const groupByDept = isBgd && state.evalListDept==='all';
+  const statusIcon = done => done ? '✓' : '—';
+
+  const rowHtml = r => {
+    const expanded = state.evalExpanded.has(r.username);
+    const isMgr = r.role==='truong_phong' || r.role==='pho_phong';
+    let out = `<tr>
+      <td style="width:30px;"><button class="btn btn--ghost btn--sm" data-eval-toggle="${esc(r.username)}" style="padding:4px 8px;">${expanded?'▾':'▸'}</button></td>
+      <td><div class="eval-list-row-name">${esc(r.fullname)}</div><div class="eval-list-row-sub">${esc(ROLE_LABEL[r.role]||'')}${isBgd?' · '+esc(r.department):''}</div></td>
+      <td>${statusIcon(r.submitted.nld)}</td>
+      <td>${isMgr?'—':statusIcon(r.submitted.ld_phong)}</td>
+      <td>${statusIcon(r.submitted.pho_truong)}</td>
+      <td>${statusIcon(r.submitted.truong_don_vi)}</td>
+      <td><b>${r.avgScore}</b></td>
+    </tr>`;
+    if(expanded){
+      out += `<tr><td></td><td colspan="6" style="padding:0 14px 18px;">${renderEvalFormHtml(r.username)}</td></tr>`;
+    }
+    return out;
+  };
+
+  const header = `<thead><tr><th></th><th>Nhân viên</th><th>NLĐ</th><th>LĐ phòng</th><th>Phó trưởng ĐV</th><th>Trưởng ĐV</th><th>Điểm BQ</th></tr></thead>`;
+
+  if(!groupByDept){
+    return `<table class="data-table">${header}<tbody>${state.evalListRows.map(rowHtml).join('')}</tbody></table>`;
+  }
+  const groups = {}; const order=[];
+  state.evalListRows.forEach(r=>{ const d=r.department||'Chưa phân phòng ban'; if(!groups[d]){groups[d]=[];order.push(d);} groups[d].push(r); });
+  const orderedDepts = state.departments.filter(d=>groups[d]).concat(order.filter(d=>!state.departments.includes(d)));
+  const body = orderedDepts.map(d=>`
+    <tr><td colspan="7" style="background:var(--paper-dark);padding:9px 14px;font-family:var(--font-display);font-weight:700;color:var(--brand-red);font-size:13.5px;">${esc(d)}</td></tr>
+    ${groups[d].map(rowHtml).join('')}
+  `).join('');
+  return `<table class="data-table">${header}<tbody>${body}</tbody></table>`;
+}
+
+function renderEvalFormHtml(username){
+  const data = state.evalCache[username];
+  if(!data) return `<div class="eval-form-wrap" data-eval-form-user="${esc(username)}"><div class="eval-header-card"><div style="text-align:center;color:var(--ink-soft);">Đang tải phiếu đánh giá...</div></div></div>`;
+  if(data === null) return `<div class="eval-form-wrap" data-eval-form-user="${esc(username)}"><div class="eval-header-card"><div style="text-align:center;color:var(--danger);">Không thể tải phiếu đánh giá.</div></div></div>`;
+
+  const { target, criteria, scores, submitted, editableFields } = data;
+  const editable = new Set(editableFields);
+  const isMgr = target.role==='truong_phong' || target.role==='pho_phong';
+
+  const rowsHtml = criteria.map(c=>{
+    const row = scores.find(s=>s.id===c.id) || {id:c.id, nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0, ghi_chu:''};
+    row.__max = c.max;
+    const avg = evalRowAverage(row);
+    const cell = (field) => {
+      if(field==='ld_phong' && isMgr) return `<span class="eval-score-na">Không áp dụng</span>`;
+      const val = row[field] ?? 0;
+      if(editable.has(field)) return `<input type="number" min="0" max="${c.max}" class="eval-score-input" data-field="${field}" data-crit="${c.id}" value="${val}" /><span class="eval-crit-max">Tối đa ${c.max}</span>`;
+      return `<span class="eval-score-readonly">${val}</span><span class="eval-crit-max">Tối đa ${c.max}</span>`;
+    };
+    return `<tr data-row-id="${c.id}">
+      <td>${c.id<=4?c.id:c.group}</td>
+      <td class="eval-td-criteria">
+        <span class="eval-crit-label">${esc(c.label)}</span>
+        ${c.desc?`<span class="eval-crit-desc">${esc(c.desc)}</span>`:''}
+      </td>
+      <td>${cell('nld')}</td>
+      <td>${cell('ld_phong')}</td>
+      <td>${cell('pho_truong')}</td>
+      <td>${cell('truong_don_vi')}</td>
+      <td class="eval-avg" data-avg-for="${c.id}">${avg.toFixed(1)}</td>
+      <td>${editable.has('ghi_chu') ? `<input type="text" class="eval-note-input" data-note="${c.id}" value="${esc(row.ghi_chu||'')}" />` : `<span style="font-size:11.5px;color:var(--ink-soft);">${esc(row.ghi_chu||'')}</span>`}</td>
+    </tr>`;
+  }).join('');
+
+  const totals = { nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0 };
+  scores.forEach(r=>{ totals.nld+=Number(r.nld||0); totals.ld_phong+=Number(r.ld_phong||0); totals.pho_truong+=Number(r.pho_truong||0); totals.truong_don_vi+=Number(r.truong_don_vi||0); });
+  const totalAvg = (totals.nld+totals.ld_phong+totals.pho_truong+totals.truong_don_vi)/4;
+
+  return `
+    <div class="eval-form-wrap" data-eval-form-user="${esc(username)}">
+      <div class="eval-header-card">
+        <div class="name">${esc(target.fullname)}</div>
+        <div class="sub">${esc(ROLE_LABEL[target.role]||'')} ${target.department?'· '+esc(target.department):''} · Tháng ${state.evalMonth}/${state.evalYear}</div>
+        <div class="eval-badges">
+          <span class="eval-badge ${submitted.nld?'done':''}">NLĐ tự đánh giá: ${submitted.nld?'Đã chấm':'Chưa chấm'}</span>
+          ${!isMgr ? `<span class="eval-badge ${submitted.ld_phong?'done':''}">LĐ phòng: ${submitted.ld_phong?'Đã chấm':'Chưa chấm'}</span>` : ''}
+          <span class="eval-badge ${submitted.pho_truong?'done':''}">Phó trưởng đơn vị: ${submitted.pho_truong?'Đã chấm':'Chưa chấm'}</span>
+          <span class="eval-badge ${submitted.truong_don_vi?'done':''}">Trưởng đơn vị: ${submitted.truong_don_vi?'Đã chấm':'Chưa chấm'}</span>
+        </div>
+      </div>
+      <table class="eval-table">
+        <thead><tr>
+          <th style="width:34px;">TT</th>
+          <th class="eval-th-criteria">Tiêu chí đánh giá</th>
+          <th>NLĐ<br>(Tự đánh giá)</th>
+          <th>LĐ phòng/<br>nghiệp vụ</th>
+          <th>Phó trưởng<br>đơn vị</th>
+          <th>Trưởng<br>đơn vị</th>
+          <th>Điểm<br>bình quân</th>
+          <th>Ghi chú</th>
+        </tr></thead>
+        <tbody>
+          ${rowsHtml}
+          <tr class="eval-total-row">
+            <td colspan="2">Tổng điểm</td>
+            <td>${totals.nld}</td>
+            <td>${isMgr?'—':totals.ld_phong}</td>
+            <td>${totals.pho_truong}</td>
+            <td>${totals.truong_don_vi}</td>
+            <td class="eval-avg">${totalAvg.toFixed(1)}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      ${editable.size>0 ? `
+      <div class="eval-save-bar">
+        <span class="save-flash">${state.evalFlash[username]||''}</span>
+        <button class="btn btn--primary" style="width:auto;" data-eval-save="${esc(username)}">Lưu điểm đánh giá</button>
+      </div>` : ''}
+    </div>`;
+}
+
+function bindEvalFormEvents(username){
+  const wrap = document.querySelector(`.eval-form-wrap[data-eval-form-user="${CSS.escape(username)}"]`);
+  if(!wrap) return;
+  const data = state.evalCache[username];
+  if(!data || !data.scores) return;
+  wrap.querySelectorAll('.eval-score-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const critId = Number(inp.dataset.crit);
+      const field = inp.dataset.field;
+      const crit = data.criteria.find(c=>c.id===critId);
+      let v = Number(inp.value);
+      if(!Number.isFinite(v) || v<0) v = 0;
+      if(crit && v>crit.max) v = crit.max;
+      inp.value = v;
+      const row = data.scores.find(s=>s.id===critId);
+      if(row){ row[field] = v; }
+      const avgCell = wrap.querySelector(`[data-avg-for="${critId}"]`);
+      if(avgCell && row) avgCell.textContent = evalRowAverage(row).toFixed(1);
+      updateEvalTotalsDisplay(wrap, data);
+    });
+  });
+  wrap.querySelectorAll('.eval-note-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const critId = Number(inp.dataset.note);
+      const row = data.scores.find(s=>s.id===critId);
+      if(row) row.ghi_chu = inp.value;
+    });
+  });
+  const saveBtn = wrap.querySelector('[data-eval-save]');
+  if(saveBtn) saveBtn.addEventListener('click', ()=>saveEvalForm(username));
+}
+
+function updateEvalTotalsDisplay(wrap, data){
+  const totals = { nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0 };
+  data.scores.forEach(r=>{ totals.nld+=Number(r.nld||0); totals.ld_phong+=Number(r.ld_phong||0); totals.pho_truong+=Number(r.pho_truong||0); totals.truong_don_vi+=Number(r.truong_don_vi||0); });
+  const avg = (totals.nld+totals.ld_phong+totals.pho_truong+totals.truong_don_vi)/4;
+  const totalRow = wrap.querySelector('.eval-total-row');
+  if(!totalRow) return;
+  const tds = totalRow.querySelectorAll('td');
+  const isMgr = data.target.role==='truong_phong' || data.target.role==='pho_phong';
+  tds[1].textContent = totals.nld;
+  tds[2].textContent = isMgr ? '—' : totals.ld_phong;
+  tds[3].textContent = totals.pho_truong;
+  tds[4].textContent = totals.truong_don_vi;
+  tds[5].textContent = avg.toFixed(1);
+}
+
+async function saveEvalForm(username){
+  const data = state.evalCache[username];
+  if(!data) return;
+  const payload = { scores: data.scores.map(r=>({ id:r.id, nld:r.nld, ld_phong:r.ld_phong, pho_truong:r.pho_truong, truong_don_vi:r.truong_don_vi, ghi_chu:r.ghi_chu })) };
+  try{
+    await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}`, {method:'PUT', body: JSON.stringify(payload)});
+    state.evalFlash[username] = 'Đã lưu ✓';
+    await loadEvalDetail(username);
+    if(state.user.role==='bgd' || (state.user.role==='truong_phong' && state.evalSubTab==='team')) await loadEvalList();
+    renderEvaluation();
+  }catch(e){ alert(e.message); }
+}
+
 /* ============ Tab: Quản lý người dùng ============ */
 async function loadUsers(){
   try{
@@ -833,7 +1161,7 @@ function renderUsers(){
           <tr>
             <td class="emp-name">${esc(u.fullname)}</td>
             <td style="font-family:var(--font-mono);">${esc(u.username)}</td>
-            <td><span class="role-tag role-tag--${u.role}">${ROLE_LABEL[u.role]}</span></td>
+            <td><span class="role-tag role-tag--${u.role}">${ROLE_LABEL[u.role]}</span>${u.role==='bgd' && u.eval_title ? `<div style="font-size:11px;color:var(--ink-soft);margin-top:3px;">Chấm cột: ${u.eval_title==='pho_truong_don_vi'?'Phó trưởng đơn vị':'Trưởng đơn vị'}</div>` : ''}</td>
             <td>${esc(u.department || '—')}</td>
             <td style="text-align:right;white-space:nowrap;">
               <button class="btn btn--ghost btn--sm" data-edit="${esc(u.username)}">Sửa</button>
@@ -878,17 +1206,22 @@ async function exportAllDataExcel(){
   try{
     const data = await api('/api/admin/export');
     const usersRows = (data.users||[]).map(u=>({
-      username: u.username, password_hash: u.password_hash, fullname: u.fullname, role: u.role, department: u.department||''
+      username: u.username, password_hash: u.password_hash, fullname: u.fullname, role: u.role, department: u.department||'', eval_title: u.eval_title||''
     }));
     const logsRows = (data.logs||[]).map(l=>({
       username: l.username, log_date: l.log_date,
       morning: JSON.stringify(l.morning||[]), afternoon: JSON.stringify(l.afternoon||[]), overtime: JSON.stringify(l.overtime||[])
     }));
+    const evalRows = (data.evaluations||[]).map(ev=>({
+      username: ev.username, year: ev.year, month: ev.month,
+      scores: JSON.stringify(ev.scores||[]), submitted: JSON.stringify(ev.submitted||{})
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(usersRows), 'Users');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logsRows), 'Logs');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(evalRows), 'Evaluations');
     XLSX.writeFile(wb, `backup_so-nhat-ky-cong-viec_${todayISO()}.xlsx`);
-    statusEl.textContent = `Đã xuất ✓ (${usersRows.length} người dùng, ${logsRows.length} bản ghi nhật ký)`;
+    statusEl.textContent = `Đã xuất ✓ (${usersRows.length} người dùng, ${logsRows.length} bản ghi nhật ký, ${evalRows.length} phiếu đánh giá)`;
   }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
 }
 
@@ -899,23 +1232,28 @@ async function restoreAllDataExcel(){
   if(typeof XLSX === 'undefined'){ statusEl.textContent = 'Không tải được thư viện Excel.'; statusEl.classList.add('error'); return; }
   const file = fileInput.files[0];
   if(!file){ statusEl.textContent = 'Vui lòng chọn file backup (.xlsx) trước.'; statusEl.classList.add('error'); return; }
-  if(!confirm('Khôi phục sẽ GHI ĐÈ dữ liệu người dùng và nhật ký trùng khớp trong file lên dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?')) return;
+  if(!confirm('Khôi phục sẽ GHI ĐÈ dữ liệu người dùng, nhật ký và phiếu đánh giá trùng khớp trong file lên dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?')) return;
   statusEl.textContent = 'Đang đọc file...';
   try{
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
     const usersSheet = wb.Sheets['Users'];
     const logsSheet = wb.Sheets['Logs'];
+    const evalSheet = wb.Sheets['Evaluations'];
     if(!usersSheet || !logsSheet) throw new Error('File không đúng định dạng (thiếu sheet Users hoặc Logs).');
-    const usersRows = XLSX.utils.sheet_to_json(usersSheet);
+    const usersRows = XLSX.utils.sheet_to_json(usersSheet).map(u=>({ ...u, eval_title: u.eval_title || null }));
     const logsRowsRaw = XLSX.utils.sheet_to_json(logsSheet);
     const logsRows = logsRowsRaw.map(r=>({
       username: r.username, log_date: r.log_date,
       morning: JSON.parse(r.morning||'[]'), afternoon: JSON.parse(r.afternoon||'[]'), overtime: JSON.parse(r.overtime||'[]')
     }));
+    const evalRows = evalSheet ? XLSX.utils.sheet_to_json(evalSheet).map(r=>({
+      username: r.username, year: r.year, month: r.month,
+      scores: JSON.parse(r.scores||'[]'), submitted: JSON.parse(r.submitted||'{}')
+    })) : [];
     statusEl.textContent = 'Đang khôi phục...';
-    const res = await api('/api/admin/import', {method:'POST', body: JSON.stringify({users: usersRows, logs: logsRows})});
-    statusEl.textContent = `Khôi phục thành công ✓ (${res.usersImported} người dùng, ${res.logsImported} bản ghi nhật ký)`;
+    const res = await api('/api/admin/import', {method:'POST', body: JSON.stringify({users: usersRows, logs: logsRows, evaluations: evalRows})});
+    statusEl.textContent = `Khôi phục thành công ✓ (${res.usersImported} người dùng, ${res.logsImported} bản ghi nhật ký, ${res.evalsImported||0} phiếu đánh giá)`;
     fileInput.value = '';
     await loadUsers(); render();
   }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
@@ -945,6 +1283,11 @@ function renderUserModal(){
       <div class="field" id="um-dept-field"><label>Phòng ban</label>
         <select id="um-department">
           ${state.departments.map(dep=>`<option value="${esc(dep)}" ${d.department===dep?'selected':''}>${esc(dep)}</option>`).join('')}
+        </select></div>
+      <div class="field" id="um-evaltitle-field"><label>Phụ trách chấm điểm (phiếu đánh giá)</label>
+        <select id="um-eval-title">
+          <option value="pho_truong_don_vi" ${d.eval_title==='pho_truong_don_vi'?'selected':''}>Cột "Phó trưởng đơn vị"</option>
+          <option value="truong_don_vi" ${d.eval_title==='truong_don_vi'?'selected':''}>Cột "Trưởng đơn vị"</option>
         </select></div>
       <div class="modal-actions">
         <button class="btn btn--ghost" id="um-cancel">Huỷ</button>
@@ -982,7 +1325,11 @@ function bindModalEvents(){
   if(userOverlay){
     const roleSel = document.getElementById('um-role');
     const deptField = document.getElementById('um-dept-field');
-    function syncDeptVisibility(){ deptField.style.display = (roleSel.value==='bgd' || roleSel.value==='admin') ? 'none' : 'block'; }
+    const evalTitleField = document.getElementById('um-evaltitle-field');
+    function syncDeptVisibility(){
+      deptField.style.display = (roleSel.value==='bgd' || roleSel.value==='admin') ? 'none' : 'block';
+      evalTitleField.style.display = roleSel.value==='bgd' ? 'block' : 'none';
+    }
     syncDeptVisibility();
     roleSel.addEventListener('change', syncDeptVisibility);
     document.getElementById('um-cancel').addEventListener('click', ()=>{ state.userModal=null; render(); });
@@ -993,12 +1340,13 @@ function bindModalEvents(){
       const fullname = document.getElementById('um-fullname').value.trim();
       const role = document.getElementById('um-role').value;
       const department = (role==='bgd' || role==='admin') ? '' : document.getElementById('um-department').value;
+      const eval_title = role==='bgd' ? document.getElementById('um-eval-title').value : null;
       if(!isEdit && (!username || !password || !fullname)){ state.userModalError='Vui lòng nhập đầy đủ thông tin bắt buộc.'; render(); return; }
       try{
         if(isEdit){
-          await api('/api/users/'+encodeURIComponent(username), {method:'PUT', body: JSON.stringify({password: password||undefined, fullname, role, department})});
+          await api('/api/users/'+encodeURIComponent(username), {method:'PUT', body: JSON.stringify({password: password||undefined, fullname, role, department, eval_title})});
         } else {
-          await api('/api/users', {method:'POST', body: JSON.stringify({username, password, fullname, role, department})});
+          await api('/api/users', {method:'POST', body: JSON.stringify({username, password, fullname, role, department, eval_title})});
         }
         state.userModal=null; await loadUsers(); render();
       }catch(e){ state.userModalError = e.message; render(); }
