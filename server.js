@@ -326,35 +326,53 @@ app.get('/api/report', auth, requireRole('truong_phong', 'pho_phong', 'bgd', 'ad
 
 /* ---------------- PHIẾU ĐÁNH GIÁ HÀNG THÁNG ---------------- */
 // Tính quyền xem/chấm điểm của người gọi API đối với phiếu của 1 người cụ thể.
+const EVAL_FIELD_LEVEL = { nld: 0, ld_phong: 1, pho_truong: 2, truong_don_vi: 3 };
+
 async function getEvalPermissions(reqUser, targetUsername) {
   const { rows } = await pool.query('SELECT username, fullname, role, department FROM users WHERE username=$1', [targetUsername]);
   const target = rows[0];
   if (!target) return null;
   const editable = new Set();
   let canView = false;
+  let viewLevel = -1;
 
   if (reqUser.username === targetUsername && !['bgd', 'admin'].includes(reqUser.role)) {
     editable.add('nld');
     canView = true;
+    viewLevel = Math.max(viewLevel, EVAL_FIELD_LEVEL.nld);
   }
   if (reqUser.role === 'truong_phong' && target.role === 'nhan_vien' && target.department === reqUser.department) {
     editable.add('ld_phong');
     editable.add('ghi_chu');
     canView = true;
+    viewLevel = Math.max(viewLevel, EVAL_FIELD_LEVEL.ld_phong);
   }
   if (reqUser.role === 'bgd' && reqUser.eval_title === 'pho_truong_don_vi' && !['bgd', 'admin'].includes(target.role)) {
     editable.add('pho_truong');
     editable.add('ghi_chu');
     canView = true;
+    viewLevel = Math.max(viewLevel, EVAL_FIELD_LEVEL.pho_truong);
   }
   if (reqUser.role === 'bgd' && reqUser.eval_title === 'truong_don_vi' && !['bgd', 'admin'].includes(target.role)) {
     editable.add('truong_don_vi');
     editable.add('ghi_chu');
     canView = true;
+    viewLevel = Math.max(viewLevel, EVAL_FIELD_LEVEL.truong_don_vi);
   }
-  if (reqUser.role === 'admin') canView = true; // Quản trị chỉ xem, không chấm điểm
+  if (reqUser.role === 'admin') { canView = true; viewLevel = 3; } // Quản trị chỉ xem, không chấm điểm
 
-  return { target, editable, canView };
+  return { target, editable, canView, viewLevel };
+}
+
+// Che (ẩn) các cột chấm điểm ở cấp cao hơn cấp được xem — cấp dưới không thấy điểm cấp trên đã chấm cho mình.
+function maskScoresByLevel(scores, viewLevel) {
+  return scores.map(row => {
+    const r = { ...row };
+    if (viewLevel < EVAL_FIELD_LEVEL.ld_phong) r.ld_phong = null;
+    if (viewLevel < EVAL_FIELD_LEVEL.pho_truong) r.pho_truong = null;
+    if (viewLevel < EVAL_FIELD_LEVEL.truong_don_vi) r.truong_don_vi = null;
+    return r;
+  });
 }
 
 // Danh sách người cần đánh giá trong phạm vi phụ trách (dùng cho Trưởng phòng / Ban giám đốc)
@@ -412,12 +430,13 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     if (!perm.canView) return res.status(403).json({ error: 'Bạn không có quyền xem phiếu này.' });
     const { rows } = await pool.query('SELECT scores, submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
     const record = rows[0];
+    const rawScores = record ? record.scores : defaultEvalScores();
     res.json({
       target: perm.target,
       year: Number(year),
       month: Number(month),
       criteria: EVAL_CRITERIA,
-      scores: record ? record.scores : defaultEvalScores(),
+      scores: maskScoresByLevel(rawScores, perm.viewLevel),
       submitted: record ? record.submitted : defaultEvalSubmitted(),
       editableFields: Array.from(perm.editable),
     });
@@ -439,6 +458,12 @@ app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     const { rows } = await pool.query('SELECT scores, submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
     const current = rows[0] ? rows[0].scores : defaultEvalScores();
     const currentSubmitted = rows[0] ? rows[0].submitted : defaultEvalSubmitted();
+
+    // Đã chốt điểm (Lưu) trước đó thì khoá vĩnh viễn, không ai được sửa nữa — kể cả người đã chấm.
+    const ownField = ['nld', 'ld_phong', 'pho_truong', 'truong_don_vi'].find(f => perm.editable.has(f));
+    if (ownField && currentSubmitted[ownField]) {
+      return res.status(409).json({ error: 'Điểm này đã được lưu và chốt, không thể chỉnh sửa nữa.' });
+    }
 
     const byId = Object.fromEntries(current.map(r => [r.id, { ...r }]));
     for (const incoming of scores) {
