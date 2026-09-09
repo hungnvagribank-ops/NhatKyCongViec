@@ -36,6 +36,16 @@ function defaultEvalScores() {
 function defaultEvalSubmitted() {
   return { nld: false, ld_phong: false, pho_truong: false, truong_don_vi: false };
 }
+// Điểm bình quân: chỉ tính trung bình các cột NGƯỜI KHÁC chấm (LĐ phòng, Phó trưởng ĐV, Trưởng ĐV) đã thực sự
+// được lưu (submitted=true); không tính điểm tự chấm (NLĐ), và không tính cột nào chưa được chấm.
+function computeReviewerAverage(totals, submitted) {
+  let sum = 0, count = 0;
+  if (submitted.ld_phong) { sum += totals.ld_phong; count++; }
+  if (submitted.pho_truong) { sum += totals.pho_truong; count++; }
+  if (submitted.truong_don_vi) { sum += totals.truong_don_vi; count++; }
+  if (count === 0) return null;
+  return Math.round((sum / count) * 10) / 10;
+}
 
 if (!process.env.DATABASE_URL) {
   console.warn('CẢNH BÁO: chưa cấu hình biến môi trường DATABASE_URL (chuỗi kết nối PostgreSQL).');
@@ -413,8 +423,12 @@ app.get('/api/evaluations', auth, async (req, res) => {
       const ev = byUser[u.username];
       const scores = ev ? ev.scores : defaultEvalScores();
       const submitted = ev ? ev.submitted : defaultEvalSubmitted();
-      const avg = scores.reduce((s, r) => s + (r.nld + r.ld_phong + r.pho_truong + r.truong_don_vi) / 4, 0);
-      return { ...u, submitted, avgScore: canSeeAvg ? Math.round(avg * 10) / 10 : null };
+      const totals = scores.reduce((t, r) => ({
+        ld_phong: t.ld_phong + Number(r.ld_phong || 0),
+        pho_truong: t.pho_truong + Number(r.pho_truong || 0),
+        truong_don_vi: t.truong_don_vi + Number(r.truong_don_vi || 0),
+      }), { ld_phong: 0, pho_truong: 0, truong_don_vi: 0 });
+      return { ...u, submitted, avgScore: canSeeAvg ? computeReviewerAverage(totals, submitted) : null };
     });
     res.json({ rows: result, departments: DEPARTMENTS, criteria: EVAL_CRITERIA });
   } catch (e) {
@@ -432,16 +446,17 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     const { rows } = await pool.query('SELECT scores, submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
     const record = rows[0];
     const rawScores = record ? record.scores : defaultEvalScores();
+    const submittedFlags = record ? record.submitted : defaultEvalSubmitted();
     const canSeeAvg = ['bgd', 'admin'].includes(req.user.role);
     const withAvg = rawScores.map(r => ({
       ...r,
-      avg: canSeeAvg ? Math.round(((Number(r.nld||0)+Number(r.ld_phong||0)+Number(r.pho_truong||0)+Number(r.truong_don_vi||0))/4)*10)/10 : null,
+      avg: canSeeAvg ? computeReviewerAverage({ ld_phong: Number(r.ld_phong||0), pho_truong: Number(r.pho_truong||0), truong_don_vi: Number(r.truong_don_vi||0) }, submittedFlags) : null,
     }));
     const totalsRaw = rawScores.reduce((t, r) => ({
       nld: t.nld+Number(r.nld||0), ld_phong: t.ld_phong+Number(r.ld_phong||0),
       pho_truong: t.pho_truong+Number(r.pho_truong||0), truong_don_vi: t.truong_don_vi+Number(r.truong_don_vi||0),
     }), { nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0 });
-    const totalAvg = canSeeAvg ? Math.round(((totalsRaw.nld+totalsRaw.ld_phong+totalsRaw.pho_truong+totalsRaw.truong_don_vi)/4)*10)/10 : null;
+    const totalAvg = canSeeAvg ? computeReviewerAverage(totalsRaw, submittedFlags) : null;
     res.json({
       target: perm.target,
       year: Number(year),
