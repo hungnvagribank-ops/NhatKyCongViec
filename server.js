@@ -623,10 +623,11 @@ app.get('/api/evaluations/export', auth, requireRole('bgd', 'admin'), async (req
       const masked = maskScoresByLevel(rawScores, viewLevel);
       const isMgr = u.role === 'truong_phong' || u.role === 'pho_phong';
       const totals = rawScores.reduce((t, r) => ({
+        nld: t.nld + Number(r.nld || 0),
         ld_phong: t.ld_phong + Number(r.ld_phong || 0),
         pho_truong: t.pho_truong + Number(r.pho_truong || 0),
         truong_don_vi: t.truong_don_vi + Number(r.truong_don_vi || 0),
-      }), { ld_phong: 0, pho_truong: 0, truong_don_vi: 0 });
+      }), { nld: 0, ld_phong: 0, pho_truong: 0, truong_don_vi: 0 });
       const monthAvg = computeReviewerAverage(totals, submitted);
       masked.forEach((row, idx) => {
         const c = EVAL_CRITERIA[idx];
@@ -646,9 +647,24 @@ app.get('/api/evaluations/export', auth, requireRole('bgd', 'admin'), async (req
           pho_truong: row.pho_truong,
           truong_don_vi: row.truong_don_vi,
           avg,
-          monthAvg,
           ghi_chu: row.ghi_chu || '',
+          isTotal: false,
         });
+      });
+      out.push({
+        username: u.username,
+        fullname: u.fullname,
+        role: u.role,
+        department: u.department,
+        criterion: 'Tổng điểm',
+        max: null,
+        nld: totals.nld,
+        ld_phong: isMgr ? null : totals.ld_phong,
+        pho_truong: totals.pho_truong,
+        truong_don_vi: totals.truong_don_vi,
+        avg: monthAvg,
+        ghi_chu: '',
+        isTotal: true,
       });
     });
     res.json({ rows: out });
