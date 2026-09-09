@@ -877,13 +877,9 @@ async function loadEvalDetail(username){
   try{
     const data = await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}`);
     state.evalCache[username] = data;
-  }catch(e){ state.evalCache[username] = null; }
+  }catch(e){ state.evalCache[username] = { __error: e.message || 'Không thể tải phiếu đánh giá.' }; }
 }
 
-function evalRowAverage(row){
-  if(row.ld_phong===null || row.pho_truong===null || row.truong_don_vi===null) return null;
-  return (Number(row.nld||0)+Number(row.ld_phong||0)+Number(row.pho_truong||0)+Number(row.truong_don_vi||0))/4;
-}
 
 function renderEvaluation(){
   const main = document.getElementById('main');
@@ -977,7 +973,7 @@ function renderEvalListHtml(){
       <td>${isMgr?'—':statusIcon(r.submitted.ld_phong)}</td>
       <td>${statusIcon(r.submitted.pho_truong)}</td>
       <td>${statusIcon(r.submitted.truong_don_vi)}</td>
-      <td><b>${r.avgScore}</b></td>
+      <td><b>${r.avgScore===null?'—':r.avgScore}</b></td>
     </tr>`;
     if(expanded){
       out += `<tr><td></td><td colspan="6" style="padding:0 14px 18px;">${renderEvalFormHtml(r.username)}</td></tr>`;
@@ -1002,8 +998,8 @@ function renderEvalListHtml(){
 
 function renderEvalFormHtml(username){
   const data = state.evalCache[username];
+  if(data && data.__error) return `<div class="eval-form-wrap" data-eval-form-user="${esc(username)}"><div class="eval-header-card"><div style="text-align:center;color:var(--danger);">${esc(data.__error)}</div></div></div>`;
   if(!data) return `<div class="eval-form-wrap" data-eval-form-user="${esc(username)}"><div class="eval-header-card"><div style="text-align:center;color:var(--ink-soft);">Đang tải phiếu đánh giá...</div></div></div>`;
-  if(data === null) return `<div class="eval-form-wrap" data-eval-form-user="${esc(username)}"><div class="eval-header-card"><div style="text-align:center;color:var(--danger);">Không thể tải phiếu đánh giá.</div></div></div>`;
 
   const { target, criteria, scores, submitted, editableFields } = data;
   const editable = new Set(editableFields);
@@ -1015,7 +1011,7 @@ function renderEvalFormHtml(username){
   const rowsHtml = criteria.map(c=>{
     const row = scores.find(s=>s.id===c.id) || {id:c.id, nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0, ghi_chu:''};
     row.__max = c.max;
-    const avg = evalRowAverage(row);
+    const avg = row.avg;
     const cell = (field) => {
       if(field==='ld_phong' && isMgr) return `<span class="eval-score-na">Không áp dụng</span>`;
       const isOwn = editable.has(field);
@@ -1044,14 +1040,13 @@ function renderEvalFormHtml(username){
   }).join('');
 
   const totals = { nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0 };
-  let anyMasked = false;
   scores.forEach(r=>{
     totals.nld += Number(r.nld||0);
-    if(r.ld_phong===null) anyMasked=true; else totals.ld_phong += Number(r.ld_phong||0);
-    if(r.pho_truong===null) anyMasked=true; else totals.pho_truong += Number(r.pho_truong||0);
-    if(r.truong_don_vi===null) anyMasked=true; else totals.truong_don_vi += Number(r.truong_don_vi||0);
+    if(r.ld_phong!==null) totals.ld_phong += Number(r.ld_phong||0);
+    if(r.pho_truong!==null) totals.pho_truong += Number(r.pho_truong||0);
+    if(r.truong_don_vi!==null) totals.truong_don_vi += Number(r.truong_don_vi||0);
   });
-  const totalAvg = anyMasked ? null : (totals.nld+totals.ld_phong+totals.pho_truong+totals.truong_don_vi)/4;
+  const totalAvg = data.totalAvg;
 
   return `
     <div class="eval-form-wrap" data-eval-form-user="${esc(username)}">
@@ -1114,8 +1109,6 @@ function bindEvalFormEvents(username){
       inp.value = v;
       const row = data.scores.find(s=>s.id===critId);
       if(row){ row[field] = v; }
-      const avgCell = wrap.querySelector(`[data-avg-for="${critId}"]`);
-      if(avgCell && row) avgCell.textContent = evalRowAverage(row).toFixed(1);
       updateEvalTotalsDisplay(wrap, data);
     });
   });
@@ -1132,14 +1125,12 @@ function bindEvalFormEvents(username){
 
 function updateEvalTotalsDisplay(wrap, data){
   const totals = { nld:0, ld_phong:0, pho_truong:0, truong_don_vi:0 };
-  let anyMasked = false;
   data.scores.forEach(r=>{
     totals.nld += Number(r.nld||0);
-    if(r.ld_phong===null) anyMasked=true; else totals.ld_phong += Number(r.ld_phong||0);
-    if(r.pho_truong===null) anyMasked=true; else totals.pho_truong += Number(r.pho_truong||0);
-    if(r.truong_don_vi===null) anyMasked=true; else totals.truong_don_vi += Number(r.truong_don_vi||0);
+    if(r.ld_phong!==null) totals.ld_phong += Number(r.ld_phong||0);
+    if(r.pho_truong!==null) totals.pho_truong += Number(r.pho_truong||0);
+    if(r.truong_don_vi!==null) totals.truong_don_vi += Number(r.truong_don_vi||0);
   });
-  const avg = anyMasked ? null : (totals.nld+totals.ld_phong+totals.pho_truong+totals.truong_don_vi)/4;
   const totalRow = wrap.querySelector('.eval-total-row');
   if(!totalRow) return;
   const tds = totalRow.querySelectorAll('td');
@@ -1148,7 +1139,7 @@ function updateEvalTotalsDisplay(wrap, data){
   tds[2].textContent = isMgr ? '—' : totals.ld_phong;
   tds[3].textContent = totals.pho_truong;
   tds[4].textContent = totals.truong_don_vi;
-  tds[5].textContent = avg===null ? '—' : avg.toFixed(1);
+  // Điểm bình quân do server tính lại chính xác sau khi Lưu; không ước tính trên client.
 }
 
 async function saveEvalForm(username){
