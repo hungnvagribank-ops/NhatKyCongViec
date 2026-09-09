@@ -1157,26 +1157,37 @@ async function exportEvalExcel(){
     let url = `/api/evaluations/export?year=${state.evalYear}&month=${state.evalMonth}`;
     if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.evalListDept)}`;
     const data = await api(url);
-    const rows = (data.rows||[]).map(r=>({
+    const rawRows = data.rows||[];
+    const rows = rawRows.map(r=>({
       'Họ tên': r.fullname,
       'Chức vụ': ROLE_LABEL[r.role] || r.role,
       'Phòng ban': r.department || '',
-      'Tiêu chí đánh giá': r.criterion,
+      'Tiêu chí đánh giá': r.isTotal ? 'Tổng điểm' : r.criterion,
       'NLĐ (Tự đánh giá)': r.nld===null?'':r.nld,
       'LĐ phòng/nghiệp vụ': r.ld_phong===null?'':r.ld_phong,
       'Phó trưởng đơn vị': r.pho_truong===null?'':r.pho_truong,
       'Trưởng đơn vị': r.truong_don_vi===null?'':r.truong_don_vi,
       'Điểm bình quân': r.avg===null?'':r.avg,
-      'Điểm BQ cả tháng': r.monthAvg===null?'':r.monthAvg,
       'Ghi chú': r.ghi_chu || '',
     }));
     if(rows.length===0){ alert('Không có dữ liệu để xuất.'); return; }
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{wch:22},{wch:16},{wch:26},{wch:36},{wch:14},{wch:16},{wch:16},{wch:14},{wch:14},{wch:16},{wch:30}];
+    ws['!cols'] = [{wch:22},{wch:16},{wch:26},{wch:36},{wch:14},{wch:16},{wch:16},{wch:14},{wch:14},{wch:30}];
+    // In đậm dòng "Tổng điểm" của mỗi người (thể hiện Tổng bình quân cả tháng)
+    const colCount = 10;
+    rawRows.forEach((r, i)=>{
+      if(!r.isTotal) return;
+      const excelRow = i + 2; // +1 vì header chiếm dòng 1, +1 vì XLSX 1-indexed
+      for(let c=0; c<colCount; c++){
+        const addr = XLSX.utils.encode_cell({ r: excelRow-1, c });
+        if(!ws[addr]) ws[addr] = { t:'s', v:'' };
+        ws[addr].s = { font: { bold: true } };
+      }
+    });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Đánh giá công việc');
     const deptTag = state.user.role==='bgd' ? (state.evalListDept==='all' ? 'tat-ca-phong-ban' : state.evalListDept.replace(/\s+/g,'-')) : 'toan-cong-ty';
-    XLSX.writeFile(wb, `danh-gia-cong-viec_${deptTag}_thang${state.evalMonth}-${state.evalYear}.xlsx`);
+    XLSX.writeFile(wb, `danh-gia-cong-viec_${deptTag}_thang${state.evalMonth}-${state.evalYear}.xlsx`, {cellStyles:true});
   }catch(e){ alert('Lỗi: ' + e.message); }
 }
 
