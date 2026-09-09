@@ -1027,7 +1027,9 @@ function renderEvalFormHtml(username){
       }
       const val = row[field];
       if(val === null){
-        return `<span class="eval-score-locked">🔒 ${submitted[field] ? 'Đã chấm' : 'Chưa chấm'}</span>`;
+        return submitted[field]
+          ? `<span class="eval-check-yes">✓</span> <span class="eval-score-locked">Đã chấm</span>`
+          : `<span class="eval-check-no">—</span> <span class="eval-score-locked">Chưa chấm</span>`;
       }
       return `<span class="eval-score-readonly">${val}</span><span class="eval-crit-max">Tối đa ${c.max}</span>`;
     };
