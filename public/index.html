@@ -900,10 +900,15 @@ function renderEvaluation(){
     bodyHtml = renderEvalFormHtml(state.user.username);
   }
   main.innerHTML = `
-    <div class="toolbar-row"><h2 class="section-title">Đánh giá mức độ hoàn thành công việc${role==='bgd'?' — Toàn công ty':''}</h2></div>
+    <div class="toolbar-row">
+      <h2 class="section-title">Đánh giá mức độ hoàn thành công việc${role==='bgd'?' — Toàn công ty':''}</h2>
+      ${role==='bgd' ? `<button class="btn btn--ghost btn--sm" id="btn-export-eval">⬇ Xuất dữ liệu (Excel)</button>` : ''}
+    </div>
     ${renderEvalMonthPicker()}
     <div id="eval-body">${bodyHtml}</div>`;
 
+  const exportBtn = document.getElementById('btn-export-eval');
+  if(exportBtn) exportBtn.addEventListener('click', exportEvalExcel);
   bindEvalTopControls();
   bindEvalListEvents();
   document.querySelectorAll('.eval-form-wrap').forEach(el=>bindEvalFormEvents(el.dataset.evalFormUser));
@@ -1142,6 +1147,34 @@ function updateEvalTotalsDisplay(wrap, data){
   tds[3].textContent = totals.pho_truong;
   tds[4].textContent = totals.truong_don_vi;
   // Điểm bình quân do server tính lại chính xác sau khi Lưu; không ước tính trên client.
+}
+
+async function exportEvalExcel(){
+  if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
+  try{
+    let url = `/api/evaluations/export?year=${state.evalYear}&month=${state.evalMonth}`;
+    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.evalListDept)}`;
+    const data = await api(url);
+    const rows = (data.rows||[]).map(r=>({
+      'Họ tên': r.fullname,
+      'Chức vụ': ROLE_LABEL[r.role] || r.role,
+      'Phòng ban': r.department || '',
+      'Tiêu chí đánh giá': r.criterion,
+      'NLĐ (Tự đánh giá)': r.nld===null?'':r.nld,
+      'LĐ phòng/nghiệp vụ': r.ld_phong===null?'':r.ld_phong,
+      'Phó trưởng đơn vị': r.pho_truong===null?'':r.pho_truong,
+      'Trưởng đơn vị': r.truong_don_vi===null?'':r.truong_don_vi,
+      'Điểm bình quân': r.avg===null?'':r.avg,
+      'Ghi chú': r.ghi_chu || '',
+    }));
+    if(rows.length===0){ alert('Không có dữ liệu để xuất.'); return; }
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{wch:22},{wch:16},{wch:26},{wch:36},{wch:14},{wch:16},{wch:16},{wch:14},{wch:14},{wch:30}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Đánh giá công việc');
+    const deptTag = state.user.role==='bgd' ? (state.evalListDept==='all' ? 'tat-ca-phong-ban' : state.evalListDept.replace(/\s+/g,'-')) : 'toan-cong-ty';
+    XLSX.writeFile(wb, `danh-gia-cong-viec_${deptTag}_thang${state.evalMonth}-${state.evalYear}.xlsx`);
+  }catch(e){ alert('Lỗi: ' + e.message); }
 }
 
 async function saveEvalForm(username){
