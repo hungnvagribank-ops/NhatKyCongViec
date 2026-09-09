@@ -594,6 +594,63 @@ app.post('/api/admin/import', auth, requireRole('admin'), async (req, res) => {
   }
 });
 
+app.get('/api/evaluations/export', auth, requireRole('bgd', 'admin'), async (req, res) => {
+  const { year, month } = req.query;
+  if (!year || !month) return res.status(400).json({ error: 'Thiếu năm/tháng.' });
+  try {
+    const department = req.query.department;
+    const params = [];
+    let where = "WHERE role NOT IN ('bgd','admin')";
+    if (department && department !== 'all') { params.push(department); where += ' AND department = $1'; }
+    const { rows: users } = await pool.query(
+      `SELECT username, fullname, role, department FROM users ${where} ORDER BY department, (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
+      params
+    );
+    const { rows: evalRows } = await pool.query(`SELECT username, scores, submitted FROM evaluations WHERE year=$1 AND month=$2`, [year, month]);
+    const byUser = Object.fromEntries(evalRows.map(e => [e.username, e]));
+
+    // Cùng logic xác định phạm vi xem như khi mở từng phiếu — đảm bảo xuất Excel cũng che đúng cột không được xem.
+    let viewLevel = 0;
+    if (req.user.role === 'admin') viewLevel = 3;
+    else if (req.user.role === 'bgd' && req.user.eval_title === 'truong_don_vi') viewLevel = 3;
+    else if (req.user.role === 'bgd' && req.user.eval_title === 'pho_truong_don_vi') viewLevel = 2;
+
+    const out = [];
+    users.forEach(u => {
+      const ev = byUser[u.username];
+      const rawScores = ev ? ev.scores : defaultEvalScores();
+      const submitted = ev ? ev.submitted : defaultEvalSubmitted();
+      const masked = maskScoresByLevel(rawScores, viewLevel);
+      const isMgr = u.role === 'truong_phong' || u.role === 'pho_phong';
+      masked.forEach((row, idx) => {
+        const c = EVAL_CRITERIA[idx];
+        const avg = computeReviewerAverage(
+          { ld_phong: Number(rawScores[idx].ld_phong || 0), pho_truong: Number(rawScores[idx].pho_truong || 0), truong_don_vi: Number(rawScores[idx].truong_don_vi || 0) },
+          submitted
+        );
+        out.push({
+          username: u.username,
+          fullname: u.fullname,
+          role: u.role,
+          department: u.department,
+          criterion: c.label,
+          max: c.max,
+          nld: row.nld,
+          ld_phong: isMgr ? null : row.ld_phong,
+          pho_truong: row.pho_truong,
+          truong_don_vi: row.truong_don_vi,
+          avg,
+          ghi_chu: row.ghi_chu || '',
+        });
+      });
+    });
+    res.json({ rows: out });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Không thể xuất dữ liệu.' });
+  }
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy.' }));
 
 initDb()
