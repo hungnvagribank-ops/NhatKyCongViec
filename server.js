@@ -102,10 +102,14 @@ async function initDb() {
       month INT NOT NULL,
       scores JSONB NOT NULL DEFAULT '[]',
       submitted JSONB NOT NULL DEFAULT '{"nld":false,"ld_phong":false,"pho_truong":false,"truong_don_vi":false}',
+      key_tasks TEXT NOT NULL DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (username, year, month)
     );
   `);
+  try {
+    await pool.query(`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS key_tasks TEXT NOT NULL DEFAULT ''`);
+  } catch (e) { console.warn('Không thể thêm cột key_tasks:', e.message); }
   const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
   if (rows[0].c === 0) {
     const hash = await bcrypt.hash('admin123', 10);
@@ -443,7 +447,7 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     const perm = await getEvalPermissions(req.user, username);
     if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
     if (!perm.canView) return res.status(403).json({ error: 'Bạn không có quyền xem phiếu này.' });
-    const { rows } = await pool.query('SELECT scores, submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
+    const { rows } = await pool.query('SELECT scores, submitted, key_tasks FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
     const record = rows[0];
     const rawScores = record ? record.scores : defaultEvalScores();
     const submittedFlags = record ? record.submitted : defaultEvalSubmitted();
@@ -465,6 +469,7 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
       scores: maskScoresByLevel(withAvg, perm.viewLevel),
       totalAvg,
       submitted: record ? record.submitted : defaultEvalSubmitted(),
+      keyTasks: record ? record.key_tasks : '',
       editableFields: Array.from(perm.editable),
     });
   } catch (e) {
@@ -475,21 +480,27 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
 
 app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
   const { username, year, month } = req.params;
-  const { scores } = req.body || {};
+  const { scores, keyTasks } = req.body || {};
   if (!Array.isArray(scores)) return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
   try {
     const perm = await getEvalPermissions(req.user, username);
     if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
     if (perm.editable.size === 0) return res.status(403).json({ error: 'Bạn không có quyền chấm điểm phiếu này.' });
 
-    const { rows } = await pool.query('SELECT scores, submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
+    const { rows } = await pool.query('SELECT scores, submitted, key_tasks FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
     const current = rows[0] ? rows[0].scores : defaultEvalScores();
     const currentSubmitted = rows[0] ? rows[0].submitted : defaultEvalSubmitted();
+    let newKeyTasks = rows[0] ? rows[0].key_tasks : '';
 
     // Đã chốt điểm (Lưu) trước đó thì khoá vĩnh viễn, không ai được sửa nữa — kể cả người đã chấm.
     const ownField = ['nld', 'ld_phong', 'pho_truong', 'truong_don_vi'].find(f => perm.editable.has(f));
     if (ownField && currentSubmitted[ownField]) {
       return res.status(409).json({ error: 'Điểm này đã được lưu và chốt, không thể chỉnh sửa nữa.' });
+    }
+
+    // Chỉ chính người tự đánh giá (NLĐ) mới được ghi "Các công việc trọng tâm trong tháng".
+    if (ownField === 'nld' && typeof keyTasks === 'string') {
+      newKeyTasks = keyTasks.slice(0, 4000);
     }
 
     const byId = Object.fromEntries(current.map(r => [r.id, { ...r }]));
@@ -514,10 +525,10 @@ app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     }
 
     await pool.query(
-      `INSERT INTO evaluations (username, year, month, scores, submitted, updated_at)
-       VALUES ($1,$2,$3,$4,$5,now())
-       ON CONFLICT (username, year, month) DO UPDATE SET scores=$4, submitted=$5, updated_at=now()`,
-      [username, year, month, JSON.stringify(merged), JSON.stringify(newSubmitted)]
+      `INSERT INTO evaluations (username, year, month, scores, submitted, key_tasks, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,now())
+       ON CONFLICT (username, year, month) DO UPDATE SET scores=$4, submitted=$5, key_tasks=$6, updated_at=now()`,
+      [username, year, month, JSON.stringify(merged), JSON.stringify(newSubmitted), newKeyTasks]
     );
     res.json({ ok: true });
   } catch (e) {
@@ -535,7 +546,7 @@ app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
        FROM logs ORDER BY username, log_date`
     );
     const evalRes = await pool.query(
-      `SELECT username, year, month, scores, submitted FROM evaluations ORDER BY username, year, month`
+      `SELECT username, year, month, scores, submitted, key_tasks FROM evaluations ORDER BY username, year, month`
     );
     res.json({ users: usersRes.rows, logs: logsRes.rows, evaluations: evalRes.rows, exportedAt: new Date().toISOString() });
   } catch (e) {
@@ -576,10 +587,10 @@ app.post('/api/admin/import', auth, requireRole('admin'), async (req, res) => {
     for (const ev of (Array.isArray(evaluations) ? evaluations : [])) {
       if (!ev || !ev.username || !ev.year || !ev.month) continue;
       await client.query(
-        `INSERT INTO evaluations (username, year, month, scores, submitted, updated_at)
-         VALUES ($1,$2,$3,$4,$5,now())
-         ON CONFLICT (username, year, month) DO UPDATE SET scores=$4, submitted=$5, updated_at=now()`,
-        [ev.username, ev.year, ev.month, JSON.stringify(ev.scores || []), JSON.stringify(ev.submitted || defaultEvalSubmitted())]
+        `INSERT INTO evaluations (username, year, month, scores, submitted, key_tasks, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,now())
+         ON CONFLICT (username, year, month) DO UPDATE SET scores=$4, submitted=$5, key_tasks=$6, updated_at=now()`,
+        [ev.username, ev.year, ev.month, JSON.stringify(ev.scores || []), JSON.stringify(ev.submitted || defaultEvalSubmitted()), ev.key_tasks || '']
       );
       evalsImported++;
     }
