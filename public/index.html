@@ -174,6 +174,12 @@
   .eval-score-na{font-size:11px;color:var(--ink-soft);font-style:italic;}
   .eval-score-locked{font-size:11px;color:var(--ink-soft);}
   .eval-lock-banner{background:var(--gold-soft);color:var(--gold);border-radius:var(--radius);padding:9px 12px;font-size:12.5px;margin-top:12px;}
+  .eval-tasks-box{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brand-red);border-radius:var(--radius);padding:16px 20px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+  .eval-tasks-title{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--brand-red);}
+  .eval-tasks-hint{font-size:11.5px;color:var(--ink-soft);margin:2px 0 10px;font-style:italic;}
+  .eval-tasks-input{width:100%;min-height:110px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-body);font-size:13.5px;line-height:1.6;resize:vertical;}
+  .eval-tasks-input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
+  .eval-tasks-readonly{font-size:13.5px;line-height:1.7;color:var(--ink);white-space:pre-wrap;}
   .eval-avg{font-weight:700;color:var(--brand-red);font-family:var(--font-mono);}
   .eval-note-input{width:100%;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);font-size:12px;}
   .eval-total-row td{background:var(--paper-dark);font-weight:700;}
@@ -340,7 +346,7 @@ async function bootAfterLogin(){
     state.tab = 'report';
     state.reportLoading = true;
     render();
-    await loadReport();
+    await Promise.all([loadReport(), loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
   } else {
     state.tab = 'my-log';
     await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]);
@@ -351,7 +357,7 @@ async function bootAfterLogin(){
 /* ============ Shell ============ */
 function renderShell(){
   const u = state.user;
-  const noPersonalLog = u.role==='bgd' || u.role==='admin';
+  const noPersonalLog = u.role==='admin';
   const canSeeReport = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd';
   const canSeeDuration = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd' || u.role==='admin';
   const canSeeEval = u.role!=='admin';
@@ -392,7 +398,8 @@ function renderShell(){
   document.querySelectorAll('.tab').forEach(el=>{
     const activateTab = async ()=>{
       state.tab = el.dataset.tab;
-      if(state.tab==='report' || state.tab==='duration'){ state.reportLoading=true; render(); await loadReport(); }
+      if(state.tab==='my-log'){ await Promise.all([loadMyLog(state.myDate), loadMonthLogs(state.calYear, state.calMonth)]); }
+      else if(state.tab==='report' || state.tab==='duration'){ state.reportLoading=true; render(); await loadReport(); }
       else if(state.tab==='users'){ await loadUsers(); }
       else if(state.tab==='evaluation'){ render(); await bootEvalTab(); }
       render();
@@ -761,7 +768,7 @@ function renderChartBody(){
   const groups = {};
   const order = [];
   sorted.forEach(r=>{
-    const dept = r.department || 'Chưa phân phòng ban';
+    const dept = r.department || 'Ban Giám đốc';
     if(!groups[dept]){ groups[dept]=[]; order.push(dept); }
     groups[dept].push(r);
   });
@@ -779,7 +786,7 @@ function renderReportRowsGrouped(rows, isBgd){
   const groups = {};
   const order = [];
   rows.forEach(r=>{
-    const dept = r.department || 'Chưa phân phòng ban';
+    const dept = r.department || 'Ban Giám đốc';
     if(!groups[dept]){ groups[dept]=[]; order.push(dept); }
     groups[dept].push(r);
   });
@@ -995,7 +1002,7 @@ function renderEvalListHtml(){
     return `<table class="data-table">${header}<tbody>${state.evalListRows.map(rowHtml).join('')}</tbody></table>`;
   }
   const groups = {}; const order=[];
-  state.evalListRows.forEach(r=>{ const d=r.department||'Chưa phân phòng ban'; if(!groups[d]){groups[d]=[];order.push(d);} groups[d].push(r); });
+  state.evalListRows.forEach(r=>{ const d=r.department||'Ban Giám đốc'; if(!groups[d]){groups[d]=[];order.push(d);} groups[d].push(r); });
   const orderedDepts = state.departments.filter(d=>groups[d]).concat(order.filter(d=>!state.departments.includes(d)));
   const body = orderedDepts.map(d=>`
     <tr><td colspan="7" style="background:var(--paper-dark);padding:9px 14px;font-family:var(--font-display);font-weight:700;color:var(--brand-red);font-size:13.5px;">${esc(d)}</td></tr>
@@ -1071,6 +1078,13 @@ function renderEvalFormHtml(username){
         </div>
         ${isLocked && ownField ? `<div class="eval-lock-banner">🔒 Điểm của bạn cho phiếu này đã được lưu và chốt — không thể chỉnh sửa nữa.</div>` : ''}
       </div>
+      <div class="eval-tasks-box">
+        <div class="eval-tasks-title">Các công việc trọng tâm trong tháng</div>
+        <div class="eval-tasks-hint">(viết dưới dạng gạch đầu dòng các việc)</div>
+        ${ownField==='nld' && !isLocked
+          ? `<textarea class="eval-tasks-input" data-key-tasks="1" placeholder="- Việc 1...&#10;- Việc 2...&#10;- Việc 3...">${esc(data.keyTasks||'')}</textarea>`
+          : `<div class="eval-tasks-readonly">${data.keyTasks ? esc(data.keyTasks) : '<span class="cell-empty">Chưa nhập.</span>'}</div>`}
+      </div>
       <table class="eval-table">
         <thead><tr>
           <th style="width:34px;">TT</th>
@@ -1129,6 +1143,8 @@ function bindEvalFormEvents(username){
       if(row) row.ghi_chu = inp.value;
     });
   });
+  const tasksInput = wrap.querySelector('[data-key-tasks]');
+  if(tasksInput) tasksInput.addEventListener('input', ()=>{ data.keyTasks = tasksInput.value; });
   const saveBtn = wrap.querySelector('[data-eval-save]');
   if(saveBtn) saveBtn.addEventListener('click', ()=>saveEvalForm(username));
 }
@@ -1195,7 +1211,7 @@ async function exportEvalExcel(){
 async function saveEvalForm(username){
   const data = state.evalCache[username];
   if(!data) return;
-  const payload = { scores: data.scores.map(r=>({ id:r.id, nld:r.nld, ld_phong:r.ld_phong, pho_truong:r.pho_truong, truong_don_vi:r.truong_don_vi, ghi_chu:r.ghi_chu })) };
+  const payload = { scores: data.scores.map(r=>({ id:r.id, nld:r.nld, ld_phong:r.ld_phong, pho_truong:r.pho_truong, truong_don_vi:r.truong_don_vi, ghi_chu:r.ghi_chu })), keyTasks: data.keyTasks||'' };
   try{
     await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}`, {method:'PUT', body: JSON.stringify(payload)});
     state.evalFlash[username] = 'Đã lưu ✓';
