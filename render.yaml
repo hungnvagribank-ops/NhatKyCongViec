@@ -1,7 +1,7 @@
 databases:
   - name: so-nhat-ky-cong-viec-db
     region: singapore
-    plan: starter
+    plan: free
     postgresMajorVersion: "16"
 
 services:
@@ -9,7 +9,7 @@ services:
     name: so-nhat-ky-cong-viec
     runtime: node
     region: singapore
-    plan: starter
+    plan: free
     buildCommand: npm install
     startCommand: node server.js
     envVars:
