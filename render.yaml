@@ -1,20 +1,23 @@
 databases:
-  - name: so-nhat-ky-db
-    plan: free
-    databaseName: sonhatky
-    user: sonhatky
+  - name: so-nhat-ky-cong-viec-db
+    region: singapore
+    plan: starter
+    postgresMajorVersion: "16"
 
 services:
   - type: web
     name: so-nhat-ky-cong-viec
     runtime: node
-    plan: free
+    region: singapore
+    plan: starter
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: so-nhat-ky-db
+          name: so-nhat-ky-cong-viec-db
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      - key: NODE_VERSION
+        value: "20"
