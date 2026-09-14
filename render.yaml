@@ -1,7 +1,7 @@
 databases:
   - name: so-nhat-ky-cong-viec-db
     region: singapore
-    plan: free
+    plan: starter
     postgresMajorVersion: "16"
 
 services:
