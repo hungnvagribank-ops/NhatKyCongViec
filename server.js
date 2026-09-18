@@ -47,6 +47,35 @@ function computeReviewerAverage(totals, submitted) {
   return Math.round((sum / count) * 10) / 10;
 }
 
+// Bảng chấm công hàng tháng
+const ATTENDANCE_SYMBOLS = [
+  { code: 'x', label: 'Ngày làm việc' },
+  { code: 'P', label: 'Nghỉ phép' },
+  { code: 'B', label: 'Đi công tác' },
+  { code: 'S', label: 'Nghỉ ốm' },
+  { code: 'N', label: 'Nghỉ không lương' },
+  { code: 'C', label: 'Nghỉ cưới' },
+  { code: 'V', label: 'Nghỉ hiếu' },
+  { code: 'H', label: 'Đi học' },
+  { code: 'M', label: 'Nghỉ dưỡng' },
+  { code: 'K', label: 'Nghỉ khác' },
+];
+// Ngày công: tính mọi ký hiệu đã chấm, trừ 'N' (nghỉ không lương).
+// Ngày ăn ca: giống Ngày công nhưng trừ thêm cả 'P' (nghỉ phép).
+function computeAttendanceTotals(days) {
+  let cong = 0, anCa = 0;
+  Object.values(days || {}).forEach(sym => {
+    if (!sym) return;
+    if (sym === 'N') return;
+    cong++;
+    if (sym !== 'P') anCa++;
+  });
+  return { cong, anCa };
+}
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
 if (!process.env.DATABASE_URL) {
   console.warn('CẢNH BÁO: chưa cấu hình biến môi trường DATABASE_URL (chuỗi kết nối PostgreSQL).');
 }
@@ -110,6 +139,17 @@ async function initDb() {
   try {
     await pool.query(`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS key_tasks TEXT NOT NULL DEFAULT ''`);
   } catch (e) { console.warn('Không thể thêm cột key_tasks:', e.message); }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance (
+      username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      year INT NOT NULL,
+      month INT NOT NULL,
+      days JSONB NOT NULL DEFAULT '{}',
+      submitted BOOLEAN NOT NULL DEFAULT false,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (username, year, month)
+    );
+  `);
   const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM users');
   if (rows[0].c === 0) {
     const hash = await bcrypt.hash('admin123', 10);
@@ -537,6 +577,165 @@ app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
   }
 });
 
+/* ---------------- CHẤM CÔNG HÀNG THÁNG ---------------- */
+async function getAttendancePermissions(reqUser, targetUsername) {
+  const { rows } = await pool.query('SELECT username, fullname, role, department FROM users WHERE username=$1', [targetUsername]);
+  const target = rows[0];
+  if (!target) return null;
+  let canView = false, canEdit = false;
+
+  if (reqUser.username === targetUsername && reqUser.role !== 'admin') {
+    canView = true; canEdit = true;
+  }
+  if ((reqUser.role === 'truong_phong' || reqUser.role === 'pho_phong') && target.role === 'nhan_vien' && target.department === reqUser.department) {
+    canView = true;
+  }
+  if (reqUser.role === 'bgd' && target.role !== 'admin') canView = true;
+  if (reqUser.role === 'admin') canView = true;
+
+  return { target, canView, canEdit };
+}
+
+app.get('/api/attendance', auth, async (req, res) => {
+  const { year, month } = req.query;
+  if (!year || !month) return res.status(400).json({ error: 'Thiếu năm/tháng.' });
+  try {
+    let users = [];
+    if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') {
+      const r = await pool.query(
+        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role='nhan_vien' ORDER BY fullname`,
+        [req.user.department]
+      );
+      users = r.rows;
+    } else if (req.user.role === 'bgd' || req.user.role === 'admin') {
+      const department = req.query.department;
+      const params = [];
+      let where = "WHERE role NOT IN ('admin')";
+      if (department && department !== 'all') { params.push(department); where += ' AND department = $1'; }
+      const r = await pool.query(
+        `SELECT username, fullname, role, department FROM users ${where} ORDER BY department, (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
+        params
+      );
+      users = r.rows;
+    } else {
+      users = [{ username: req.user.username, fullname: req.user.fullname, role: req.user.role, department: req.user.department }];
+    }
+    const { rows: attRows } = await pool.query(`SELECT username, days, submitted FROM attendance WHERE year=$1 AND month=$2`, [year, month]);
+    const byUser = Object.fromEntries(attRows.map(a => [a.username, a]));
+    const result = users.map(u => {
+      const a = byUser[u.username];
+      const days = a ? a.days : {};
+      const totals = computeAttendanceTotals(days);
+      return { ...u, days, submitted: a ? a.submitted : false, ...totals };
+    });
+    res.json({ rows: result, departments: DEPARTMENTS, symbols: ATTENDANCE_SYMBOLS, daysInMonth: daysInMonth(Number(year), Number(month)) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.get('/api/attendance/:username/:year/:month', auth, async (req, res) => {
+  const { username, year, month } = req.params;
+  try {
+    const perm = await getAttendancePermissions(req.user, username);
+    if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    if (!perm.canView) return res.status(403).json({ error: 'Bạn không có quyền xem bảng chấm công này.' });
+    const { rows } = await pool.query('SELECT days, submitted FROM attendance WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
+    const record = rows[0];
+    const days = record ? record.days : {};
+    res.json({
+      target: perm.target,
+      year: Number(year),
+      month: Number(month),
+      daysInMonth: daysInMonth(Number(year), Number(month)),
+      symbols: ATTENDANCE_SYMBOLS,
+      days,
+      totals: computeAttendanceTotals(days),
+      submitted: record ? record.submitted : false,
+      canEdit: perm.canEdit,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.put('/api/attendance/:username/:year/:month', auth, async (req, res) => {
+  const { username, year, month } = req.params;
+  const { days } = req.body || {};
+  if (!days || typeof days !== 'object') return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
+  try {
+    const perm = await getAttendancePermissions(req.user, username);
+    if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    if (!perm.canEdit) return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa bảng chấm công này.' });
+
+    const { rows } = await pool.query('SELECT submitted FROM attendance WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
+    if (rows[0] && rows[0].submitted) {
+      return res.status(409).json({ error: 'Bảng chấm công này đã được lưu và chốt, không thể chỉnh sửa nữa.' });
+    }
+
+    const maxDay = daysInMonth(Number(year), Number(month));
+    const validCodes = new Set(ATTENDANCE_SYMBOLS.map(s => s.code));
+    const cleaned = {};
+    for (const [day, sym] of Object.entries(days)) {
+      const d = Number(day);
+      if (!Number.isInteger(d) || d < 1 || d > maxDay) continue;
+      if (!sym) continue;
+      if (!validCodes.has(sym)) continue;
+      cleaned[d] = sym;
+    }
+
+    await pool.query(
+      `INSERT INTO attendance (username, year, month, days, submitted, updated_at)
+       VALUES ($1,$2,$3,$4,true,now())
+       ON CONFLICT (username, year, month) DO UPDATE SET days=$4, submitted=true, updated_at=now()`,
+      [username, year, month, JSON.stringify(cleaned)]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.get('/api/attendance-export', auth, requireRole('truong_phong', 'pho_phong', 'bgd', 'admin'), async (req, res) => {
+  const { year, month } = req.query;
+  if (!year || !month) return res.status(400).json({ error: 'Thiếu năm/tháng.' });
+  try {
+    let users = [];
+    if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') {
+      const r = await pool.query(
+        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role='nhan_vien' ORDER BY fullname`,
+        [req.user.department]
+      );
+      users = r.rows;
+    } else {
+      const department = req.query.department;
+      const params = [];
+      let where = "WHERE role NOT IN ('admin')";
+      if (department && department !== 'all') { params.push(department); where += ' AND department = $1'; }
+      const r = await pool.query(
+        `SELECT username, fullname, role, department FROM users ${where} ORDER BY department, (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
+        params
+      );
+      users = r.rows;
+    }
+    const { rows: attRows } = await pool.query(`SELECT username, days, submitted FROM attendance WHERE year=$1 AND month=$2`, [year, month]);
+    const byUser = Object.fromEntries(attRows.map(a => [a.username, a]));
+    const result = users.map(u => {
+      const a = byUser[u.username];
+      const days = a ? a.days : {};
+      const totals = computeAttendanceTotals(days);
+      return { ...u, days, ...totals };
+    });
+    res.json({ rows: result, daysInMonth: daysInMonth(Number(year), Number(month)), symbols: ATTENDANCE_SYMBOLS });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Không thể xuất dữ liệu.' });
+  }
+});
+
 /* ---------------- SAO LƯU & KHÔI PHỤC (chỉ BGĐ) ---------------- */
 app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
   try {
@@ -548,7 +747,10 @@ app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
     const evalRes = await pool.query(
       `SELECT username, year, month, scores, submitted, key_tasks FROM evaluations ORDER BY username, year, month`
     );
-    res.json({ users: usersRes.rows, logs: logsRes.rows, evaluations: evalRes.rows, exportedAt: new Date().toISOString() });
+    const attRes = await pool.query(
+      `SELECT username, year, month, days, submitted FROM attendance ORDER BY username, year, month`
+    );
+    res.json({ users: usersRes.rows, logs: logsRes.rows, evaluations: evalRes.rows, attendance: attRes.rows, exportedAt: new Date().toISOString() });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Không thể xuất dữ liệu.' });
@@ -556,7 +758,7 @@ app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
 });
 
 app.post('/api/admin/import', auth, requireRole('admin'), async (req, res) => {
-  const { users, logs, evaluations } = req.body || {};
+  const { users, logs, evaluations, attendance } = req.body || {};
   if (!Array.isArray(users) || !Array.isArray(logs)) return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
   const client = await pool.connect();
   try {
@@ -594,8 +796,19 @@ app.post('/api/admin/import', auth, requireRole('admin'), async (req, res) => {
       );
       evalsImported++;
     }
+    let attImported = 0;
+    for (const a of (Array.isArray(attendance) ? attendance : [])) {
+      if (!a || !a.username || !a.year || !a.month) continue;
+      await client.query(
+        `INSERT INTO attendance (username, year, month, days, submitted, updated_at)
+         VALUES ($1,$2,$3,$4,$5,now())
+         ON CONFLICT (username, year, month) DO UPDATE SET days=$4, submitted=$5, updated_at=now()`,
+        [a.username, a.year, a.month, JSON.stringify(a.days || {}), !!a.submitted]
+      );
+      attImported++;
+    }
     await client.query('COMMIT');
-    res.json({ ok: true, usersImported, logsImported, evalsImported });
+    res.json({ ok: true, usersImported, logsImported, evalsImported, attImported });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error(e);
