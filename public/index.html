@@ -180,6 +180,27 @@
   .eval-tasks-input{width:100%;min-height:110px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-body);font-size:13.5px;line-height:1.6;resize:vertical;}
   .eval-tasks-input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
   .eval-tasks-readonly{font-size:13.5px;line-height:1.7;color:var(--ink);white-space:pre-wrap;}
+
+  /* Chấm công */
+  .att-legend{font-size:12px;color:var(--ink-soft);margin-bottom:16px;line-height:1.7;background:var(--paper-dark);padding:10px 14px;border-radius:var(--radius);}
+  .att-legend b{color:var(--ink);font-family:var(--font-mono);}
+  .att-total-cards{display:flex;gap:14px;margin-bottom:18px;}
+  .att-total-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brand-red);border-radius:var(--radius);padding:14px 20px;box-shadow:var(--shadow-sm);}
+  .att-total-card .num{font-family:var(--font-display);font-size:24px;font-weight:700;color:var(--brand-red);}
+  .att-total-card .lbl{font-size:11.5px;color:var(--ink-soft);}
+  .att-table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+  table.att-table{border-collapse:collapse;width:100%;}
+  table.att-table th{font-family:var(--font-body);font-weight:700;color:var(--brand-red);font-size:11px;padding:6px 4px;background:var(--paper-dark);border:1px solid var(--line);text-align:center;white-space:nowrap;}
+  table.att-table td{font-size:12px;padding:5px 4px;border:1px solid var(--line);text-align:center;vertical-align:middle;}
+  table.att-table th.att-col-name, table.att-table td.att-col-name{text-align:left;padding-left:10px;white-space:nowrap;position:sticky;left:0;background:var(--card);z-index:1;}
+  table.att-table th.att-col-name{background:var(--paper-dark);}
+  table.att-table th.att-col-tt, table.att-table td.att-col-tt{width:30px;}
+  .att-weekend{background:var(--paper-dark);}
+  .att-day-select{width:36px;padding:3px 1px;border:1px solid var(--line);border-radius:2px;font-size:11.5px;text-align:center;background:#fff;font-family:var(--font-mono);}
+  .att-day-select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
+  .att-day-select:disabled{background:var(--paper-dark);color:var(--ink-soft);border-color:transparent;}
+  .att-dept-header td{background:var(--paper-dark);font-family:var(--font-display);font-weight:700;color:var(--brand-red);font-size:13.5px;text-align:left;padding:9px 14px;}
+  .att-subtabs{display:flex;gap:8px;margin-bottom:18px;}
   .eval-avg{font-weight:700;color:var(--brand-red);font-family:var(--font-mono);}
   .eval-note-input{width:100%;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius);font-size:12px;}
   .eval-total-row td{background:var(--paper-dark);font-weight:700;}
@@ -284,6 +305,8 @@ const state = {
   reportFrom: todayISO(), reportTo: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false, reportExpanded: new Set(),
   evalYear: new Date().getFullYear(), evalMonth: new Date().getMonth()+1, evalSubTab:'self',
   evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{},
+  attYear: new Date().getFullYear(), attMonth: new Date().getMonth()+1, attSubTab:'self',
+  attSelfData: null, attListRows: [], attListDept:'all', attListLoading:false, attFlash:'',
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
   pwModalOpen:false, pwError:'', pwOk:false
 };
@@ -361,6 +384,7 @@ function renderShell(){
   const canSeeReport = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd';
   const canSeeDuration = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd' || u.role==='admin';
   const canSeeEval = u.role!=='admin';
+  const canSeeAttendance = u.role!=='admin';
   const canManageUsers = u.role === 'admin';
 
   app.innerHTML = `
@@ -383,6 +407,7 @@ function renderShell(){
       ${canSeeReport ? `<div class="tab ${state.tab==='report'?'active':''}" data-tab="report" role="tab" tabindex="0" aria-selected="${state.tab==='report'}">Báo cáo</div>` : ''}
       ${canSeeDuration ? `<div class="tab ${state.tab==='duration'?'active':''}" data-tab="duration" role="tab" tabindex="0" aria-selected="${state.tab==='duration'}">Thời lượng</div>` : ''}
       ${canSeeEval ? `<div class="tab ${state.tab==='evaluation'?'active':''}" data-tab="evaluation" role="tab" tabindex="0" aria-selected="${state.tab==='evaluation'}">Đánh giá</div>` : ''}
+      ${canSeeAttendance ? `<div class="tab ${state.tab==='attendance'?'active':''}" data-tab="attendance" role="tab" tabindex="0" aria-selected="${state.tab==='attendance'}">Chấm công</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
       ${!noPersonalLog ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
@@ -402,6 +427,7 @@ function renderShell(){
       else if(state.tab==='report' || state.tab==='duration'){ state.reportLoading=true; render(); await loadReport(); }
       else if(state.tab==='users'){ await loadUsers(); }
       else if(state.tab==='evaluation'){ render(); await bootEvalTab(); }
+      else if(state.tab==='attendance'){ render(); await bootAttTab(); }
       render();
     };
     el.addEventListener('click', activateTab);
@@ -412,6 +438,7 @@ function renderShell(){
   else if(state.tab==='report') renderReport();
   else if(state.tab==='duration') renderReportChart();
   else if(state.tab==='evaluation') renderEvaluation();
+  else if(state.tab==='attendance') renderAttendance();
   else if(state.tab==='users') renderUsers();
 
   bindModalEvents();
@@ -1219,6 +1246,253 @@ async function saveEvalForm(username){
     if(state.user.role==='bgd' || (state.user.role==='truong_phong' && state.evalSubTab==='team')) await loadEvalList();
     renderEvaluation();
   }catch(e){ alert(e.message); }
+}
+
+/* ============ Tab: Chấm công hàng tháng ============ */
+async function bootAttTab(){
+  const role = state.user.role;
+  const canSeeTeam = role==='truong_phong'||role==='pho_phong'||role==='bgd';
+  if(canSeeTeam && state.attSubTab==='team') await loadAttList();
+  else await loadAttSelf();
+}
+
+async function loadAttSelf(){
+  try{
+    const data = await api(`/api/attendance/${encodeURIComponent(state.user.username)}/${state.attYear}/${state.attMonth}`);
+    state.attSelfData = data;
+  }catch(e){ state.attSelfData = { __error: e.message || 'Không thể tải bảng chấm công.' }; }
+}
+
+async function loadAttList(){
+  state.attListLoading = true;
+  try{
+    let url = `/api/attendance?year=${state.attYear}&month=${state.attMonth}`;
+    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.attListDept)}`;
+    const data = await api(url);
+    state.attListRows = data.rows; state.departments = data.departments;
+    state.attSymbols = data.symbols; state.attDaysInMonth = data.daysInMonth;
+  }catch(e){ state.attListRows = []; }
+  state.attListLoading = false;
+}
+
+function daysInMonthClient(y,m){ return new Date(y,m,0).getDate(); }
+function computeAttTotalsClient(days){
+  let cong=0, anCa=0;
+  Object.values(days||{}).forEach(sym=>{
+    if(!sym) return;
+    if(sym==='N') return;
+    cong++;
+    if(sym!=='P') anCa++;
+  });
+  return {cong, anCa};
+}
+
+function renderAttendance(){
+  const main = document.getElementById('main');
+  const role = state.user.role;
+  const canSeeTeam = role==='truong_phong'||role==='pho_phong'||role==='bgd';
+  let bodyHtml = '';
+  if(canSeeTeam){
+    bodyHtml = `
+      <div class="att-subtabs">
+        <button class="eval-subtab ${state.attSubTab==='self'?'active':''}" data-att-subtab="self">Chấm công của tôi</button>
+        <button class="eval-subtab ${state.attSubTab==='team'?'active':''}" data-att-subtab="team">${role==='bgd'?'Xem chấm công toàn công ty':'Xem chấm công phòng ban'}</button>
+      </div>
+      ${state.attSubTab==='self' ? renderAttSelfHtml() : renderAttMatrixHtml()}`;
+  } else {
+    bodyHtml = renderAttSelfHtml();
+  }
+  main.innerHTML = `
+    <div class="toolbar-row">
+      <h2 class="section-title">Chấm công hàng tháng</h2>
+      ${(canSeeTeam && state.attSubTab==='team') ? `<button class="btn btn--ghost btn--sm" id="btn-export-att">⬇ Xuất dữ liệu (Excel)</button>` : ''}
+    </div>
+    ${renderAttMonthPicker()}
+    <div id="att-body">${bodyHtml}</div>`;
+  bindAttTopControls();
+  const exportBtn = document.getElementById('btn-export-att');
+  if(exportBtn) exportBtn.addEventListener('click', exportAttendanceExcel);
+  if(!canSeeTeam || state.attSubTab==='self') bindAttSelfEvents();
+}
+
+function renderAttMonthPicker(){
+  const months = Array.from({length:12}, (_,i)=>i+1);
+  const years = [state.attYear-1, state.attYear, state.attYear+1];
+  const isBgd = state.user.role==='bgd';
+  const showDept = isBgd && state.attSubTab==='team';
+  return `
+    <div class="filters-bar">
+      <div class="field"><label for="att-month">Tháng</label>
+        <select id="att-month">${months.map(m=>`<option value="${m}" ${m===state.attMonth?'selected':''}>Tháng ${m}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label for="att-year">Năm</label>
+        <select id="att-year">${years.map(y=>`<option value="${y}" ${y===state.attYear?'selected':''}>${y}</option>`).join('')}</select>
+      </div>
+      ${showDept ? `<div class="field"><label for="att-dept">Phòng ban</label>
+        <select id="att-dept">
+          <option value="all" ${state.attListDept==='all'?'selected':''}>Tất cả phòng ban</option>
+          ${state.departments.map(d=>`<option value="${esc(d)}" ${state.attListDept===d?'selected':''}>${esc(d)}</option>`).join('')}
+        </select></div>` : ''}
+    </div>`;
+}
+
+function bindAttTopControls(){
+  const monthSel = document.getElementById('att-month');
+  const yearSel = document.getElementById('att-year');
+  const deptSel = document.getElementById('att-dept');
+  const refresh = async ()=>{ await bootAttTab(); renderAttendance(); };
+  if(monthSel) monthSel.addEventListener('change', async e=>{ state.attMonth=Number(e.target.value); await refresh(); });
+  if(yearSel) yearSel.addEventListener('change', async e=>{ state.attYear=Number(e.target.value); await refresh(); });
+  if(deptSel) deptSel.addEventListener('change', async e=>{ state.attListDept=e.target.value; await refresh(); });
+  document.querySelectorAll('[data-att-subtab]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      state.attSubTab = btn.dataset.attSubtab;
+      if(state.attSubTab==='team') await loadAttList(); else await loadAttSelf();
+      renderAttendance();
+    });
+  });
+}
+
+function renderAttSelfHtml(){
+  const data = state.attSelfData;
+  if(data && data.__error) return `<div class="eval-header-card"><div style="text-align:center;color:var(--danger);">${esc(data.__error)}</div></div>`;
+  if(!data) return `<div class="eval-header-card"><div style="text-align:center;color:var(--ink-soft);">Đang tải...</div></div>`;
+  const locked = data.submitted;
+  const n = data.daysInMonth;
+  const symbols = data.symbols;
+  const cells = [];
+  for(let d=1; d<=n; d++){
+    const dow = new Date(data.year, data.month-1, d).getDay();
+    const isWeekend = dow===0 || dow===6;
+    const val = data.days[d] || data.days[String(d)] || '';
+    cells.push(`<td class="${isWeekend?'att-weekend':''}">
+      <select class="att-day-select" data-att-day="${d}" ${locked?'disabled':''}>
+        <option value=""></option>
+        ${symbols.map(s=>`<option value="${s.code}" ${val===s.code?'selected':''}>${s.code}</option>`).join('')}
+      </select>
+    </td>`);
+  }
+  return `
+    <div class="eval-header-card">
+      <div class="name">${esc(data.target.fullname)}</div>
+      <div class="sub">${esc(ROLE_LABEL[data.target.role]||'')} ${data.target.department?'· '+esc(data.target.department):''} · Tháng ${data.month}/${data.year}</div>
+      ${locked ? `<div class="eval-lock-banner">🔒 Bảng chấm công này đã được lưu và chốt — không thể chỉnh sửa nữa.</div>` : ''}
+    </div>
+    <div class="att-legend">${symbols.map(s=>`<b>${s.code}</b>: ${esc(s.label)}`).join(' &nbsp;·&nbsp; ')}</div>
+    <div class="att-total-cards">
+      <div class="att-total-card"><div class="num" id="att-cong">${data.totals.cong}</div><div class="lbl">Ngày công</div></div>
+      <div class="att-total-card"><div class="num" id="att-anca">${data.totals.anCa}</div><div class="lbl">Ngày ăn ca</div></div>
+    </div>
+    <div class="att-table-wrap">
+      <table class="att-table">
+        <thead><tr>${Array.from({length:n},(_,i)=>i+1).map(d=>{
+          const dow = new Date(data.year, data.month-1, d).getDay();
+          return `<th class="${dow===0||dow===6?'att-weekend':''}">${d}</th>`;
+        }).join('')}</tr></thead>
+        <tbody><tr>${cells.join('')}</tr></tbody>
+      </table>
+    </div>
+    ${!locked ? `<div class="eval-save-bar"><span class="save-flash">${state.attFlash}</span><button class="btn btn--primary" style="width:auto;" id="btn-save-att">Lưu chấm công</button></div>` : ''}
+  `;
+}
+
+function bindAttSelfEvents(){
+  const data = state.attSelfData;
+  if(!data || data.__error) return;
+  document.querySelectorAll('[data-att-day]').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const day = sel.dataset.attDay;
+      if(sel.value) data.days[day] = sel.value; else delete data.days[day];
+      data.totals = computeAttTotalsClient(data.days);
+      const congEl = document.getElementById('att-cong');
+      const ancaEl = document.getElementById('att-anca');
+      if(congEl) congEl.textContent = data.totals.cong;
+      if(ancaEl) ancaEl.textContent = data.totals.anCa;
+    });
+  });
+  const saveBtn = document.getElementById('btn-save-att');
+  if(saveBtn) saveBtn.addEventListener('click', saveAttSelf);
+}
+
+async function saveAttSelf(){
+  const data = state.attSelfData;
+  if(!data) return;
+  try{
+    await api(`/api/attendance/${encodeURIComponent(state.user.username)}/${state.attYear}/${state.attMonth}`, {method:'PUT', body: JSON.stringify({days: data.days})});
+    state.attFlash = 'Đã lưu ✓';
+    await loadAttSelf();
+    renderAttendance();
+  }catch(e){ alert(e.message); }
+}
+
+function renderAttMatrixHtml(){
+  if(state.attListLoading) return `<div style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</div>`;
+  if(state.attListRows.length===0) return `<div style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</div>`;
+  const isBgd = state.user.role==='bgd';
+  const groupByDept = isBgd && state.attListDept==='all';
+  const n = state.attDaysInMonth || daysInMonthClient(state.attYear, state.attMonth);
+  const dayHeaders = Array.from({length:n},(_,i)=>i+1).map(d=>{
+    const dow = new Date(state.attYear, state.attMonth-1, d).getDay();
+    return `<th class="${dow===0||dow===6?'att-weekend':''}">${d}</th>`;
+  }).join('');
+
+  const rowHtml = (r, idx) => {
+    const cells = Array.from({length:n},(_,i)=>i+1).map(d=>{
+      const dow = new Date(state.attYear, state.attMonth-1, d).getDay();
+      const val = r.days[d] || r.days[String(d)] || '';
+      return `<td class="${dow===0||dow===6?'att-weekend':''}">${esc(val)}</td>`;
+    }).join('');
+    return `<tr>
+      <td class="att-col-tt">${idx+1}</td>
+      <td class="att-col-name"><b>${esc(r.fullname)}</b><br><span style="font-size:10.5px;color:var(--ink-soft);">${esc(ROLE_LABEL[r.role]||'')}${isBgd?' · '+esc(r.department):''}</span></td>
+      ${cells}
+      <td><b>${r.cong}</b></td>
+      <td><b>${r.anCa}</b></td>
+    </tr>`;
+  };
+
+  const header = `<tr><th class="att-col-tt">TT</th><th class="att-col-name">Họ và tên</th>${dayHeaders}<th>Ngày<br>công</th><th>Ngày<br>ăn ca</th></tr>`;
+
+  let body;
+  if(!groupByDept){
+    body = state.attListRows.map(rowHtml).join('');
+  } else {
+    const groups = {}; const order=[];
+    state.attListRows.forEach(r=>{ const d=r.department||'Ban Giám đốc'; if(!groups[d]){groups[d]=[];order.push(d);} groups[d].push(r); });
+    const orderedDepts = state.departments.filter(d=>groups[d]).concat(order.filter(d=>!state.departments.includes(d)));
+    body = orderedDepts.map(d=>`
+      <tr class="att-dept-header"><td colspan="${n+4}">${esc(d)}</td></tr>
+      ${groups[d].map(rowHtml).join('')}
+    `).join('');
+  }
+
+  return `<div class="att-legend">${(state.attSymbols||[]).map(s=>`<b>${s.code}</b>: ${esc(s.label)}`).join(' &nbsp;·&nbsp; ')}</div>
+    <div class="att-table-wrap"><table class="att-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+async function exportAttendanceExcel(){
+  if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
+  try{
+    let url = `/api/attendance-export?year=${state.attYear}&month=${state.attMonth}`;
+    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.attListDept)}`;
+    const data = await api(url);
+    const n = data.daysInMonth;
+    const header = ['TT','Họ và tên', ...Array.from({length:n},(_,i)=>String(i+1).padStart(2,'0')), 'Ngày công','Ngày ăn ca'];
+    const aoa = [header];
+    (data.rows||[]).forEach((r,i)=>{
+      const row = [i+1, r.fullname];
+      for(let d=1; d<=n; d++) row.push(r.days[d] || r.days[String(d)] || '');
+      row.push(r.cong, r.anCa);
+      aoa.push(row);
+    });
+    if(aoa.length===1){ alert('Không có dữ liệu để xuất.'); return; }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:4},{wch:22}, ...Array.from({length:n},()=>({wch:4})), {wch:10},{wch:10}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Bảng chấm công');
+    const deptTag = state.user.role==='bgd' ? (state.attListDept==='all' ? 'tat-ca-phong-ban' : state.attListDept.replace(/\s+/g,'-')) : (state.user.department||'').replace(/\s+/g,'-');
+    XLSX.writeFile(wb, `bang-cham-cong_${deptTag}_thang${state.attMonth}-${state.attYear}.xlsx`);
+  }catch(e){ alert('Lỗi: ' + e.message); }
 }
 
 /* ============ Tab: Quản lý người dùng ============ */
