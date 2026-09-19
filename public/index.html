@@ -195,7 +195,8 @@
   table.att-table th.att-col-name, table.att-table td.att-col-name{text-align:left;padding-left:10px;white-space:nowrap;position:sticky;left:0;background:var(--card);z-index:1;}
   table.att-table th.att-col-name{background:var(--paper-dark);}
   table.att-table th.att-col-tt, table.att-table td.att-col-tt{width:30px;}
-  .att-weekend{background:var(--paper-dark);}
+  .att-weekend{background:var(--gold-soft) !important;}
+  table.att-table th.att-weekend{color:var(--gold);}
   .att-day-select{width:36px;padding:3px 1px;border:1px solid var(--line);border-radius:2px;font-size:11.5px;text-align:center;background:#fff;font-family:var(--font-mono);}
   .att-day-select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
   .att-day-select:disabled{background:var(--paper-dark);color:var(--ink-soft);border-color:transparent;}
@@ -1364,7 +1365,8 @@ function renderAttSelfHtml(){
   for(let d=1; d<=n; d++){
     const dow = new Date(data.year, data.month-1, d).getDay();
     const isWeekend = dow===0 || dow===6;
-    const val = data.days[d] || data.days[String(d)] || '';
+    let val = data.days[d] || data.days[String(d)] || '';
+    if(!locked && !val && !isWeekend){ val = 'x'; data.days[d] = 'x'; }
     cells.push(`<td class="${isWeekend?'att-weekend':''}">
       <select class="att-day-select" data-att-day="${d}" ${locked?'disabled':''}>
         <option value=""></option>
@@ -1372,6 +1374,7 @@ function renderAttSelfHtml(){
       </select>
     </td>`);
   }
+  data.totals = computeAttTotalsClient(data.days);
   return `
     <div class="eval-header-card">
       <div class="name">${esc(data.target.fullname)}</div>
