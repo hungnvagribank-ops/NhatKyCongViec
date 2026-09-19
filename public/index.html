@@ -1531,7 +1531,7 @@ function renderUsers(){
     </table>
     <div class="backup-card">
       <h3>Sao lưu & khôi phục dữ liệu</h3>
-      <p>Xuất toàn bộ dữ liệu (tài khoản người dùng + nhật ký công việc của tất cả nhân viên) ra 1 file Excel để lưu trữ. Có thể dùng chính file này để khôi phục lại dữ liệu khi cần.</p>
+      <p>Xuất toàn bộ dữ liệu (tài khoản người dùng, nhật ký công việc, phiếu đánh giá, chấm công của tất cả nhân viên) ra 1 file Excel để lưu trữ. Có thể dùng chính file này để khôi phục lại dữ liệu khi cần.</p>
       <div class="backup-row">
         <button class="btn btn--ghost btn--sm" id="btn-export-all">⬇ Xuất toàn bộ dữ liệu (Excel)</button>
         <span class="backup-status" id="export-status"></span>
@@ -1573,14 +1573,19 @@ async function exportAllDataExcel(){
     }));
     const evalRows = (data.evaluations||[]).map(ev=>({
       username: ev.username, year: ev.year, month: ev.month,
-      scores: JSON.stringify(ev.scores||[]), submitted: JSON.stringify(ev.submitted||{})
+      scores: JSON.stringify(ev.scores||[]), submitted: JSON.stringify(ev.submitted||{}), key_tasks: ev.key_tasks||''
+    }));
+    const attRows = (data.attendance||[]).map(a=>({
+      username: a.username, year: a.year, month: a.month,
+      days: JSON.stringify(a.days||{}), submitted: !!a.submitted
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(usersRows), 'Users');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logsRows), 'Logs');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(evalRows), 'Evaluations');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attRows), 'Attendance');
     XLSX.writeFile(wb, `backup_so-nhat-ky-cong-viec_${todayISO()}.xlsx`);
-    statusEl.textContent = `Đã xuất ✓ (${usersRows.length} người dùng, ${logsRows.length} bản ghi nhật ký, ${evalRows.length} phiếu đánh giá)`;
+    statusEl.textContent = `Đã xuất ✓ (${usersRows.length} người dùng, ${logsRows.length} bản ghi nhật ký, ${evalRows.length} phiếu đánh giá, ${attRows.length} bảng chấm công)`;
   }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
 }
 
@@ -1591,7 +1596,7 @@ async function restoreAllDataExcel(){
   if(typeof XLSX === 'undefined'){ statusEl.textContent = 'Không tải được thư viện Excel.'; statusEl.classList.add('error'); return; }
   const file = fileInput.files[0];
   if(!file){ statusEl.textContent = 'Vui lòng chọn file backup (.xlsx) trước.'; statusEl.classList.add('error'); return; }
-  if(!confirm('Khôi phục sẽ GHI ĐÈ dữ liệu người dùng, nhật ký và phiếu đánh giá trùng khớp trong file lên dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?')) return;
+  if(!confirm('Khôi phục sẽ GHI ĐÈ dữ liệu người dùng, nhật ký, phiếu đánh giá và chấm công trùng khớp trong file lên dữ liệu hiện tại. Bạn chắc chắn muốn tiếp tục?')) return;
   statusEl.textContent = 'Đang đọc file...';
   try{
     const buf = await file.arrayBuffer();
@@ -1599,6 +1604,7 @@ async function restoreAllDataExcel(){
     const usersSheet = wb.Sheets['Users'];
     const logsSheet = wb.Sheets['Logs'];
     const evalSheet = wb.Sheets['Evaluations'];
+    const attSheet = wb.Sheets['Attendance'];
     if(!usersSheet || !logsSheet) throw new Error('File không đúng định dạng (thiếu sheet Users hoặc Logs).');
     const usersRows = XLSX.utils.sheet_to_json(usersSheet).map(u=>({ ...u, eval_title: u.eval_title || null }));
     const logsRowsRaw = XLSX.utils.sheet_to_json(logsSheet);
@@ -1608,11 +1614,15 @@ async function restoreAllDataExcel(){
     }));
     const evalRows = evalSheet ? XLSX.utils.sheet_to_json(evalSheet).map(r=>({
       username: r.username, year: r.year, month: r.month,
-      scores: JSON.parse(r.scores||'[]'), submitted: JSON.parse(r.submitted||'{}')
+      scores: JSON.parse(r.scores||'[]'), submitted: JSON.parse(r.submitted||'{}'), key_tasks: r.key_tasks||''
+    })) : [];
+    const attRows = attSheet ? XLSX.utils.sheet_to_json(attSheet).map(r=>({
+      username: r.username, year: r.year, month: r.month,
+      days: JSON.parse(r.days||'{}'), submitted: r.submitted===true || r.submitted==='TRUE' || r.submitted===1
     })) : [];
     statusEl.textContent = 'Đang khôi phục...';
-    const res = await api('/api/admin/import', {method:'POST', body: JSON.stringify({users: usersRows, logs: logsRows, evaluations: evalRows})});
-    statusEl.textContent = `Khôi phục thành công ✓ (${res.usersImported} người dùng, ${res.logsImported} bản ghi nhật ký, ${res.evalsImported||0} phiếu đánh giá)`;
+    const res = await api('/api/admin/import', {method:'POST', body: JSON.stringify({users: usersRows, logs: logsRows, evaluations: evalRows, attendance: attRows})});
+    statusEl.textContent = `Khôi phục thành công ✓ (${res.usersImported} người dùng, ${res.logsImported} bản ghi nhật ký, ${res.evalsImported||0} phiếu đánh giá, ${res.attImported||0} bảng chấm công)`;
     fileInput.value = '';
     await loadUsers(); render();
   }catch(e){ statusEl.classList.add('error'); statusEl.textContent = 'Lỗi: ' + e.message; }
