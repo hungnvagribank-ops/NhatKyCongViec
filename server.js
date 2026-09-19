@@ -587,7 +587,7 @@ async function getAttendancePermissions(reqUser, targetUsername) {
   if (reqUser.username === targetUsername && reqUser.role !== 'admin') {
     canView = true; canEdit = true;
   }
-  if ((reqUser.role === 'truong_phong' || reqUser.role === 'pho_phong') && target.role === 'nhan_vien' && target.department === reqUser.department) {
+  if ((reqUser.role === 'truong_phong' || reqUser.role === 'pho_phong') && target.role !== 'bgd' && target.role !== 'admin' && target.department === reqUser.department) {
     canView = true;
   }
   if (reqUser.role === 'bgd' && target.role !== 'admin') canView = true;
@@ -603,7 +603,7 @@ app.get('/api/attendance', auth, async (req, res) => {
     let users = [];
     if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') {
       const r = await pool.query(
-        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role='nhan_vien' ORDER BY fullname`,
+        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role NOT IN ('bgd','admin') ORDER BY (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
         [req.user.department]
       );
       users = r.rows;
@@ -706,7 +706,7 @@ app.get('/api/attendance-export', auth, requireRole('truong_phong', 'pho_phong',
     let users = [];
     if (req.user.role === 'truong_phong' || req.user.role === 'pho_phong') {
       const r = await pool.query(
-        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role='nhan_vien' ORDER BY fullname`,
+        `SELECT username, fullname, role, department FROM users WHERE department=$1 AND role NOT IN ('bgd','admin') ORDER BY (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
         [req.user.department]
       );
       users = r.rows;
