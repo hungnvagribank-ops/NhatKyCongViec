@@ -1358,7 +1358,6 @@ function renderAttSelfHtml(){
   const data = state.attSelfData;
   if(data && data.__error) return `<div class="eval-header-card"><div style="text-align:center;color:var(--danger);">${esc(data.__error)}</div></div>`;
   if(!data) return `<div class="eval-header-card"><div style="text-align:center;color:var(--ink-soft);">Đang tải...</div></div>`;
-  const locked = data.submitted;
   const n = data.daysInMonth;
   const symbols = data.symbols;
   const cells = [];
@@ -1366,9 +1365,9 @@ function renderAttSelfHtml(){
     const dow = new Date(data.year, data.month-1, d).getDay();
     const isWeekend = dow===0 || dow===6;
     let val = data.days[d] || data.days[String(d)] || '';
-    if(!locked && !val && !isWeekend){ val = 'x'; data.days[d] = 'x'; }
+    if(!val && !isWeekend){ val = 'x'; data.days[d] = 'x'; }
     cells.push(`<td class="${isWeekend?'att-weekend':''}">
-      <select class="att-day-select" data-att-day="${d}" ${locked?'disabled':''}>
+      <select class="att-day-select" data-att-day="${d}">
         <option value=""></option>
         ${symbols.map(s=>`<option value="${s.code}" ${val===s.code?'selected':''}>${s.code}</option>`).join('')}
       </select>
@@ -1379,7 +1378,6 @@ function renderAttSelfHtml(){
     <div class="eval-header-card">
       <div class="name">${esc(data.target.fullname)}</div>
       <div class="sub">${esc(ROLE_LABEL[data.target.role]||'')} ${data.target.department?'· '+esc(data.target.department):''} · Tháng ${data.month}/${data.year}</div>
-      ${locked ? `<div class="eval-lock-banner">🔒 Bảng chấm công này đã được lưu và chốt — không thể chỉnh sửa nữa.</div>` : ''}
     </div>
     <div class="att-legend">${symbols.map(s=>`<b>${s.code}</b>: ${esc(s.label)}`).join(' &nbsp;·&nbsp; ')}</div>
     <div class="att-total-cards">
@@ -1395,7 +1393,7 @@ function renderAttSelfHtml(){
         <tbody><tr>${cells.join('')}</tr></tbody>
       </table>
     </div>
-    ${!locked ? `<div class="eval-save-bar"><span class="save-flash">${state.attFlash}</span><button class="btn btn--primary" style="width:auto;" id="btn-save-att">Lưu chấm công</button></div>` : ''}
+    <div class="eval-save-bar"><span class="save-flash">${state.attFlash}</span><button class="btn btn--primary" style="width:auto;" id="btn-save-att">Lưu chấm công</button></div>
   `;
 }
 
