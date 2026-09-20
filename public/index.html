@@ -411,7 +411,6 @@ function renderShell(){
       ${canSeeAttendance ? `<div class="tab ${state.tab==='attendance'?'active':''}" data-tab="attendance" role="tab" tabindex="0" aria-selected="${state.tab==='attendance'}">Chấm công</div>` : ''}
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
-      ${!noPersonalLog ? `<button class="btn-export" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>` : ''}
     </div>
     <div class="main ${state.tab==='my-log'?'main--wide':''}" id="main"></div>
     ${state.pwModalOpen ? renderPasswordModal() : ''}
@@ -419,8 +418,6 @@ function renderShell(){
   `;
   document.getElementById('btn-logout').addEventListener('click', doLogout);
   document.getElementById('btn-pw').addEventListener('click', ()=>{ state.pwModalOpen=true; state.pwError=''; state.pwOk=false; render(); });
-  const exportBtn = document.getElementById('btn-export-excel');
-  if(exportBtn) exportBtn.addEventListener('click', exportMyDataExcel);
   document.querySelectorAll('.tab').forEach(el=>{
     const activateTab = async ()=>{
       state.tab = el.dataset.tab;
@@ -539,6 +536,10 @@ function renderMyLog(){
   const today = todayISO();
 
   main.innerHTML = `
+    <div class="toolbar-row">
+      <h2 class="section-title">Nhật ký công việc của tôi</h2>
+      <button class="btn btn--ghost btn--sm" id="btn-export-excel">⬇ Xuất dữ liệu (Excel)</button>
+    </div>
     <div class="my-log-layout">
       ${renderCalendar()}
       <div>
@@ -555,6 +556,7 @@ function renderMyLog(){
 
   bindCalendarEvents();
   document.getElementById('btn-save-log').addEventListener('click', saveMyLog);
+  document.getElementById('btn-export-excel').addEventListener('click', exportMyDataExcel);
   bindSessionEvents();
 }
 
