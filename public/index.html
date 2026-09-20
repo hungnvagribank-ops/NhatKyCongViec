@@ -190,14 +190,14 @@
   .att-total-card .lbl{font-size:11.5px;color:var(--ink-soft);}
   .att-table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
   table.att-table{border-collapse:collapse;width:100%;}
-  table.att-table th{font-family:var(--font-body);font-weight:700;color:var(--brand-red);font-size:11px;padding:6px 4px;background:var(--paper-dark);border:1px solid var(--line);text-align:center;white-space:nowrap;}
-  table.att-table td{font-size:12px;padding:5px 4px;border:1px solid var(--line);text-align:center;vertical-align:middle;}
-  table.att-table th.att-col-name, table.att-table td.att-col-name{text-align:left;padding-left:10px;white-space:nowrap;position:sticky;left:0;background:var(--card);z-index:1;}
+  table.att-table th{font-family:var(--font-body);font-weight:700;color:var(--brand-red);font-size:10.5px;padding:5px 2px;background:var(--paper-dark);border:1px solid var(--line);text-align:center;white-space:nowrap;}
+  table.att-table td{font-size:11.5px;padding:4px 2px;border:1px solid var(--line);text-align:center;vertical-align:middle;}
+  table.att-table th.att-col-name, table.att-table td.att-col-name{text-align:left;padding-left:10px;white-space:nowrap;position:sticky;left:0;background:var(--card);z-index:1;max-width:150px;overflow:hidden;text-overflow:ellipsis;}
   table.att-table th.att-col-name{background:var(--paper-dark);}
   table.att-table th.att-col-tt, table.att-table td.att-col-tt{width:30px;}
   .att-weekend{background:var(--gold-soft) !important;}
   table.att-table th.att-weekend{color:var(--gold);}
-  .att-day-select{width:36px;padding:3px 1px;border:1px solid var(--line);border-radius:2px;font-size:11.5px;text-align:center;background:#fff;font-family:var(--font-mono);}
+  .att-day-select{width:29px;padding:2px 0;border:1px solid var(--line);border-radius:2px;font-size:11px;text-align:center;background:#fff;font-family:var(--font-mono);}
   .att-day-select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);}
   .att-day-select:disabled{background:var(--paper-dark);color:var(--ink-soft);border-color:transparent;}
   .att-dept-header td{background:var(--paper-dark);font-family:var(--font-display);font-weight:700;color:var(--brand-red);font-size:13.5px;text-align:left;padding:9px 14px;}
@@ -412,7 +412,7 @@ function renderShell(){
       ${canManageUsers ? `<div class="tab ${state.tab==='users'?'active':''}" data-tab="users" role="tab" tabindex="0" aria-selected="${state.tab==='users'}">Quản trị</div>` : ''}
       <div class="tabs-spacer"></div>
     </div>
-    <div class="main ${state.tab==='my-log'?'main--wide':''}" id="main"></div>
+    <div class="main ${(state.tab==='my-log'||state.tab==='attendance')?'main--wide':''}" id="main"></div>
     ${state.pwModalOpen ? renderPasswordModal() : ''}
     ${state.userModal ? renderUserModal() : ''}
   `;
