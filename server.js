@@ -670,11 +670,6 @@ app.put('/api/attendance/:username/:year/:month', auth, async (req, res) => {
     if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
     if (!perm.canEdit) return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa bảng chấm công này.' });
 
-    const { rows } = await pool.query('SELECT submitted FROM attendance WHERE username=$1 AND year=$2 AND month=$3', [username, year, month]);
-    if (rows[0] && rows[0].submitted) {
-      return res.status(409).json({ error: 'Bảng chấm công này đã được lưu và chốt, không thể chỉnh sửa nữa.' });
-    }
-
     const maxDay = daysInMonth(Number(year), Number(month));
     const validCodes = new Set(ATTENDANCE_SYMBOLS.map(s => s.code));
     const cleaned = {};
