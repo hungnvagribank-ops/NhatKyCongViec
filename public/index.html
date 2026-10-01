@@ -4,14 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sổ Nhật Ký Công Việc</title>
-  <title>Sổ Nhật Ký Công Việc</title>
-<meta property="og:type" content="website">
-<meta property="og:title" content="Sổ Nhật Ký Công Việc Agribank">
-<meta property="og:description" content="Nhật ký công việc - Trường Đào tạo cán bộ Agribank">
-<meta property="og:url" content="https://so-nhat-ky-cong-viec.onrender.com/">
-<meta property="og:image" content="https://so-nhat-ky-cong-viec.onrender.com/agribank-banner.png">
-<meta property="og:image:width" content="1731">
-<meta property="og:image:height" content="909">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -313,7 +305,7 @@ const state = {
   calYear: new Date().getFullYear(), calMonth: new Date().getMonth()+1, monthHasData: new Set(),
   reportFrom: todayISO(), reportTo: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false, reportExpanded: new Set(),
   evalYear: new Date().getFullYear(), evalMonth: new Date().getMonth()+1, evalSubTab:'self',
-  evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{},
+  evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{}, unlockLog: [],
   attYear: new Date().getFullYear(), attMonth: new Date().getMonth()+1, attSubTab:'self',
   attSelfData: null, attListRows: [], attListDept:'all', attListLoading:false, attFlash:'',
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
@@ -392,7 +384,7 @@ function renderShell(){
   const noPersonalLog = u.role==='admin';
   const canSeeReport = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd';
   const canSeeDuration = u.role==='truong_phong' || u.role==='pho_phong' || u.role==='bgd' || u.role==='admin';
-  const canSeeEval = u.role!=='admin';
+  const canSeeEval = true;
   const canSeeAttendance = u.role!=='admin';
   const canManageUsers = u.role === 'admin';
 
@@ -905,16 +897,55 @@ async function bootEvalTab(){
     else await loadEvalDetail(state.user.username);
   } else if(state.user.role==='bgd'){
     await loadEvalList();
+  } else if(state.user.role==='admin'){
+    await Promise.all([loadEvalList(), loadUnlockLog()]);
   } else {
     await loadEvalDetail(state.user.username);
   }
+}
+
+async function loadUnlockLog(){
+  try{
+    const data = await api(`/api/evaluations-unlock-log?year=${state.evalYear}&month=${state.evalMonth}`);
+    state.unlockLog = data.rows || [];
+  }catch(e){ state.unlockLog = []; }
+}
+
+const EVAL_FIELD_LABEL = {nld:'NLĐ tự đánh giá', ld_phong:'LĐ phòng', pho_truong:'Phó trưởng đơn vị', truong_don_vi:'Trưởng đơn vị'};
+
+async function unlockEval(username, field){
+  const reason = prompt(`Mở khoá cột "${EVAL_FIELD_LABEL[field]}" của phiếu này.\nNhập lý do mở khoá (bắt buộc):`);
+  if(reason===null) return;
+  if(!reason.trim()){ alert('Vui lòng nhập lý do mở khoá.'); return; }
+  try{
+    await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}/unlock`, {method:'POST', body: JSON.stringify({field, reason: reason.trim()})});
+    await Promise.all([loadEvalDetail(username), loadEvalList(), loadUnlockLog()]);
+    renderEvaluation();
+  }catch(e){ alert(e.message); }
+}
+
+function renderUnlockLogHtml(){
+  const rows = state.unlockLog || [];
+  const body = rows.length===0
+    ? `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);font-style:italic;padding:14px;">Chưa có lần mở khoá nào trong tháng này.</td></tr>`
+    : rows.map(r=>`<tr>
+        <td>${esc(new Date(r.created_at).toLocaleString('vi-VN'))}</td>
+        <td>${esc(r.admin_username)}</td>
+        <td>${esc(r.target_fullname)}</td>
+        <td>${esc(EVAL_FIELD_LABEL[r.field]||r.field)}</td>
+        <td>${esc(r.reason)}</td>
+      </tr>`).join('');
+  return `<div style="margin-top:28px;">
+    <h3 class="section-title" style="font-size:15px;">Nhật ký mở khoá phiếu đánh giá (tháng ${state.evalMonth}/${state.evalYear})</h3>
+    <table class="data-table"><thead><tr><th>Thời gian</th><th>Admin</th><th>Phiếu của</th><th>Cột điểm</th><th>Lý do</th></tr></thead><tbody>${body}</tbody></table>
+  </div>`;
 }
 
 async function loadEvalList(){
   state.evalListLoading = true;
   try{
     let url = `/api/evaluations?year=${state.evalYear}&month=${state.evalMonth}`;
-    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.evalListDept)}`;
+    if(state.user.role==='bgd' || state.user.role==='admin') url += `&department=${encodeURIComponent(state.evalListDept)}`;
     const data = await api(url);
     state.evalListRows = data.rows; state.departments = data.departments;
   }catch(e){ state.evalListRows = []; }
@@ -942,13 +973,15 @@ function renderEvaluation(){
       ${state.evalSubTab==='self' ? renderEvalFormHtml(state.user.username) : renderEvalListHtml()}`;
   } else if(role==='bgd'){
     bodyHtml = renderEvalListHtml();
+  } else if(role==='admin'){
+    bodyHtml = renderEvalListHtml() + renderUnlockLogHtml();
   } else {
     bodyHtml = renderEvalFormHtml(state.user.username);
   }
   main.innerHTML = `
     <div class="toolbar-row">
       <h2 class="section-title">Đánh giá mức độ hoàn thành công việc</h2>
-      ${role==='bgd' ? `<button class="btn btn--ghost btn--sm" id="btn-export-eval">⬇ Xuất dữ liệu (Excel)</button>` : ''}
+      ${(role==='bgd' || role==='admin') ? `<button class="btn btn--ghost btn--sm" id="btn-export-eval">⬇ Xuất dữ liệu (Excel)</button>` : ''}
     </div>
     ${renderEvalMonthPicker()}
     <div id="eval-body">${bodyHtml}</div>`;
@@ -971,7 +1004,7 @@ function renderEvalMonthPicker(){
       <div class="field"><label for="eval-year">Năm</label>
         <select id="eval-year">${years.map(y=>`<option value="${y}" ${y===state.evalYear?'selected':''}>${y}</option>`).join('')}</select>
       </div>
-      ${state.user.role==='bgd' ? `<div class="field"><label for="eval-dept">Phòng ban</label>
+      ${(state.user.role==='bgd' || state.user.role==='admin') ? `<div class="field"><label for="eval-dept">Phòng ban</label>
         <select id="eval-dept">
           <option value="all" ${state.evalListDept==='all'?'selected':''}>Tất cả phòng ban</option>
           ${state.departments.map(d=>`<option value="${esc(d)}" ${state.evalListDept===d?'selected':''}>${esc(d)}</option>`).join('')}
@@ -1012,7 +1045,7 @@ function bindEvalListEvents(){
 function renderEvalListHtml(){
   if(state.evalListLoading) return `<div style="text-align:center;color:var(--ink-soft);padding:24px;">Đang tải...</div>`;
   if(state.evalListRows.length===0) return `<div style="text-align:center;color:var(--ink-soft);font-style:italic;padding:24px;">Không có dữ liệu</div>`;
-  const isBgd = state.user.role==='bgd';
+  const isBgd = state.user.role==='bgd' || state.user.role==='admin';
   const groupByDept = isBgd && state.evalListDept==='all';
   const statusIcon = done => done ? '<span class="eval-check-yes">✓</span>' : '<span class="eval-check-no">—</span>';
 
@@ -1109,10 +1142,8 @@ function renderEvalFormHtml(username){
         <div class="name">${esc(target.fullname)}</div>
         <div class="sub">${esc(ROLE_LABEL[target.role]||'')} ${target.department?'· '+esc(target.department):''} · Tháng ${state.evalMonth}/${state.evalYear}</div>
         <div class="eval-badges">
-          <span class="eval-badge ${submitted.nld?'done':''}">NLĐ tự đánh giá: ${submitted.nld?'Đã chấm':'Chưa chấm'}</span>
-          ${!isMgr ? `<span class="eval-badge ${submitted.ld_phong?'done':''}">LĐ phòng: ${submitted.ld_phong?'Đã chấm':'Chưa chấm'}</span>` : ''}
-          <span class="eval-badge ${submitted.pho_truong?'done':''}">Phó trưởng đơn vị: ${submitted.pho_truong?'Đã chấm':'Chưa chấm'}</span>
-          <span class="eval-badge ${submitted.truong_don_vi?'done':''}">Trưởng đơn vị: ${submitted.truong_don_vi?'Đã chấm':'Chưa chấm'}</span>
+          ${['nld','ld_phong','pho_truong','truong_don_vi'].filter(f=>!(f==='ld_phong' && isMgr)).map(f=>`
+            <span class="eval-badge ${submitted[f]?'done':''}">${EVAL_FIELD_LABEL[f]}: ${submitted[f]?'Đã chấm':'Chưa chấm'}${(data.canUnlock && submitted[f]) ? ` <button class="btn btn--ghost btn--sm" style="padding:1px 8px;margin-left:6px;" data-unlock-user="${esc(username)}" data-unlock-field="${f}">🔓 Mở khoá</button>` : ''}</span>`).join('')}
         </div>
         ${isLocked && ownField ? `<div class="eval-lock-banner">🔒 Điểm của bạn cho phiếu này đã được lưu và chốt — không thể chỉnh sửa nữa.</div>` : ''}
       </div>
@@ -1185,6 +1216,9 @@ function bindEvalFormEvents(username){
   if(tasksInput) tasksInput.addEventListener('input', ()=>{ data.keyTasks = tasksInput.value; });
   const saveBtn = wrap.querySelector('[data-eval-save]');
   if(saveBtn) saveBtn.addEventListener('click', ()=>saveEvalForm(username));
+  wrap.querySelectorAll('[data-unlock-field]').forEach(btn=>{
+    btn.addEventListener('click', ()=>unlockEval(btn.dataset.unlockUser, btn.dataset.unlockField));
+  });
 }
 
 function updateEvalTotalsDisplay(wrap, data){
@@ -1210,7 +1244,7 @@ async function exportEvalExcel(){
   if(typeof XLSX === 'undefined'){ alert('Không tải được thư viện xuất Excel, vui lòng kiểm tra kết nối mạng và thử lại.'); return; }
   try{
     let url = `/api/evaluations/export?year=${state.evalYear}&month=${state.evalMonth}`;
-    if(state.user.role==='bgd') url += `&department=${encodeURIComponent(state.evalListDept)}`;
+    if(state.user.role==='bgd' || state.user.role==='admin') url += `&department=${encodeURIComponent(state.evalListDept)}`;
     const data = await api(url);
     const rawRows = data.rows||[];
     const rows = rawRows.map(r=>({
@@ -1241,7 +1275,7 @@ async function exportEvalExcel(){
     });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Đánh giá công việc');
-    const deptTag = state.user.role==='bgd' ? (state.evalListDept==='all' ? 'tat-ca-phong-ban' : state.evalListDept.replace(/\s+/g,'-')) : 'toan-cong-ty';
+    const deptTag = (state.user.role==='bgd' || state.user.role==='admin') ? (state.evalListDept==='all' ? 'tat-ca-phong-ban' : state.evalListDept.replace(/\s+/g,'-')) : 'toan-cong-ty';
     XLSX.writeFile(wb, `danh-gia-cong-viec_${deptTag}_thang${state.evalMonth}-${state.evalYear}.xlsx`, {cellStyles:true});
   }catch(e){ alert('Lỗi: ' + e.message); }
 }
