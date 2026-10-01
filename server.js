@@ -152,6 +152,21 @@ async function initDb() {
     );
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS evaluation_unlock_requests (
+      id SERIAL PRIMARY KEY,
+      requester_username TEXT NOT NULL,
+      target_username TEXT NOT NULL,
+      year INT NOT NULL,
+      month INT NOT NULL,
+      field TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      resolved_by TEXT,
+      resolved_at TIMESTAMPTZ
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance (
       username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
       year INT NOT NULL,
@@ -500,6 +515,15 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
     const record = rows[0];
     const rawScores = record ? record.scores : defaultEvalScores();
     const submittedFlags = record ? record.submitted : defaultEvalSubmitted();
+    const ownFieldForReq = EVAL_FIELDS.find(f => perm.editable.has(f));
+    let pendingRequest = false;
+    if (ownFieldForReq) {
+      const pr = await pool.query(
+        `SELECT 1 FROM evaluation_unlock_requests WHERE target_username=$1 AND year=$2 AND month=$3 AND field=$4 AND status='pending'`,
+        [username, year, month, ownFieldForReq]
+      );
+      pendingRequest = pr.rows.length > 0;
+    }
     const canSeeAvg = ['bgd', 'admin'].includes(req.user.role);
     const withAvg = rawScores.map(r => ({
       ...r,
@@ -521,6 +545,7 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
       keyTasks: record ? record.key_tasks : '',
       editableFields: Array.from(perm.editable),
       canUnlock: req.user.role === 'admin',
+      pendingRequest,
     });
   } catch (e) {
     console.error(e);
@@ -587,19 +612,12 @@ app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
   }
 });
 
-// Mở khoá một cột điểm đã chốt (chỉ admin). Điểm cũ được giữ nguyên để người chấm sửa rồi lưu lại;
+// Mở khoá một cột điểm đã chốt (chỉ admin gọi được). Điểm cũ được giữ nguyên để người chấm sửa rồi lưu lại;
 // trong thời gian cột đang mở khoá, cột đó tự bị loại khỏi điểm bình quân (vì submitted = false).
-// Mọi lần mở khoá đều được ghi vào bảng evaluation_unlocks.
-app.post('/api/evaluations/:username/:year/:month/unlock', auth, requireRole('admin'), async (req, res) => {
-  const { username, year, month } = req.params;
-  const { field, reason } = req.body || {};
-  const FIELDS = ['nld', 'ld_phong', 'pho_truong', 'truong_don_vi'];
-  if (!FIELDS.includes(field)) return res.status(400).json({ error: 'Cột điểm không hợp lệ.' });
-  const cleanReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
-  if (!cleanReason) return res.status(400).json({ error: 'Vui lòng nhập lý do mở khoá.' });
-  const y = Number(year), m = Number(month);
-  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return res.status(400).json({ error: 'Năm/tháng không hợp lệ.' });
+// Mọi lần mở khoá đều được ghi vào bảng evaluation_unlocks, và các yêu cầu đang chờ của cùng cột được đánh dấu đã duyệt.
+const EVAL_FIELDS = ['nld', 'ld_phong', 'pho_truong', 'truong_don_vi'];
 
+async function performUnlock(adminUsername, username, y, m, field, reason) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -608,8 +626,13 @@ app.post('/api/evaluations/:username/:year/:month/unlock', auth, requireRole('ad
       [username, y, m]
     );
     if (!rows[0] || !rows[0].submitted || !rows[0].submitted[field]) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Cột điểm này chưa được chốt nên không cần mở khoá.' });
+      await client.query(
+        `UPDATE evaluation_unlock_requests SET status='approved', resolved_by=$1, resolved_at=now()
+         WHERE target_username=$2 AND year=$3 AND month=$4 AND field=$5 AND status='pending'`,
+        [adminUsername, username, y, m, field]
+      );
+      await client.query('COMMIT');
+      return { status: 400, error: 'Cột điểm này chưa được chốt (hoặc đã được mở khoá trước đó).' };
     }
     const newSubmitted = { ...rows[0].submitted, [field]: false };
     await client.query(
@@ -618,16 +641,118 @@ app.post('/api/evaluations/:username/:year/:month/unlock', auth, requireRole('ad
     );
     await client.query(
       'INSERT INTO evaluation_unlocks (admin_username, target_username, year, month, field, reason) VALUES ($1,$2,$3,$4,$5,$6)',
-      [req.user.username, username, y, m, field, cleanReason]
+      [adminUsername, username, y, m, field, reason]
+    );
+    await client.query(
+      `UPDATE evaluation_unlock_requests SET status='approved', resolved_by=$1, resolved_at=now()
+       WHERE target_username=$2 AND year=$3 AND month=$4 AND field=$5 AND status='pending'`,
+      [adminUsername, username, y, m, field]
     );
     await client.query('COMMIT');
-    res.json({ ok: true });
+    return { ok: true };
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error(e);
-    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+    throw e;
   } finally {
     client.release();
+  }
+}
+
+app.post('/api/evaluations/:username/:year/:month/unlock', auth, requireRole('admin'), async (req, res) => {
+  const { username, year, month } = req.params;
+  const { field, reason } = req.body || {};
+  if (!EVAL_FIELDS.includes(field)) return res.status(400).json({ error: 'Cột điểm không hợp lệ.' });
+  const cleanReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
+  if (!cleanReason) return res.status(400).json({ error: 'Vui lòng nhập lý do mở khoá.' });
+  const y = Number(year), m = Number(month);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return res.status(400).json({ error: 'Năm/tháng không hợp lệ.' });
+  try {
+    const r = await performUnlock(req.user.username, username, y, m, field, cleanReason);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+// Người chấm (hoặc người tự đánh giá) gửi yêu cầu xin chỉnh sửa cột điểm CỦA CHÍNH MÌNH đã bị chốt.
+app.post('/api/evaluations/:username/:year/:month/request-unlock', auth, async (req, res) => {
+  const { username, year, month } = req.params;
+  const { reason } = req.body || {};
+  const cleanReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
+  if (!cleanReason) return res.status(400).json({ error: 'Vui lòng nhập lý do xin chỉnh sửa.' });
+  const y = Number(year), m = Number(month);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return res.status(400).json({ error: 'Năm/tháng không hợp lệ.' });
+  try {
+    const perm = await getEvalPermissions(req.user, username);
+    if (!perm) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+    const ownField = EVAL_FIELDS.find(f => perm.editable.has(f));
+    if (!ownField) return res.status(403).json({ error: 'Bạn không có quyền chấm phiếu này nên không thể xin chỉnh sửa.' });
+    const { rows } = await pool.query('SELECT submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3', [username, y, m]);
+    if (!rows[0] || !rows[0].submitted || !rows[0].submitted[ownField]) {
+      return res.status(400).json({ error: 'Điểm của bạn chưa được chốt nên bạn có thể tự chỉnh sửa.' });
+    }
+    const dup = await pool.query(
+      `SELECT 1 FROM evaluation_unlock_requests WHERE target_username=$1 AND year=$2 AND month=$3 AND field=$4 AND status='pending'`,
+      [username, y, m, ownField]
+    );
+    if (dup.rows.length) return res.status(409).json({ error: 'Bạn đã gửi yêu cầu cho phiếu này, đang chờ admin duyệt.' });
+    await pool.query(
+      'INSERT INTO evaluation_unlock_requests (requester_username, target_username, year, month, field, reason) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.user.username, username, y, m, ownField, cleanReason]
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.get('/api/evaluations-unlock-requests', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.id, r.requester_username, COALESCE(ru.fullname, r.requester_username) AS requester_fullname,
+              r.target_username, COALESCE(tu.fullname, r.target_username) AS target_fullname,
+              r.year, r.month, r.field, r.reason, r.created_at
+       FROM evaluation_unlock_requests r
+       LEFT JOIN users ru ON ru.username = r.requester_username
+       LEFT JOIN users tu ON tu.username = r.target_username
+       WHERE r.status='pending' ORDER BY r.created_at`
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.post('/api/evaluations-unlock-requests/:id/approve', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM evaluation_unlock_requests WHERE id=$1 AND status='pending'`, [req.params.id]);
+    const r = rows[0];
+    if (!r) return res.status(404).json({ error: 'Yêu cầu không tồn tại hoặc đã được xử lý.' });
+    const reason = `Theo yêu cầu của ${r.requester_username}: ${r.reason}`.slice(0, 500);
+    const out = await performUnlock(req.user.username, r.target_username, r.year, r.month, r.field, reason);
+    if (out.error) return res.status(out.status).json({ error: out.error });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+app.post('/api/evaluations-unlock-requests/:id/reject', auth, requireRole('admin'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE evaluation_unlock_requests SET status='rejected', resolved_by=$1, resolved_at=now() WHERE id=$2 AND status='pending'`,
+      [req.user.username, req.params.id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: 'Yêu cầu không tồn tại hoặc đã được xử lý.' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
   }
 });
 
