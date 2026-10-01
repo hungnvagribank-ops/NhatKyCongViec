@@ -10,6 +10,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '12h'; // ví dụ đặt '7d' trên Render để đỡ phải đăng nhập lại mỗi ngày
 const JWT_SECRET = process.env.JWT_SECRET || 'doi-chuoi-bi-mat-nay-trong-bien-moi-truong';
 const SESSION_MAX = { morning: 240, afternoon: 240, overtime: 960 };
 const DEPARTMENTS = [
@@ -192,7 +193,7 @@ function sign(user) {
   return jwt.sign(
     { username: user.username, role: user.role, department: user.department, fullname: user.fullname, eval_title: user.eval_title || null },
     JWT_SECRET,
-    { expiresIn: '12h' }
+    { expiresIn: JWT_EXPIRES_IN }
   );
 }
 
