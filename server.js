@@ -140,6 +140,18 @@ async function initDb() {
     await pool.query(`ALTER TABLE evaluations ADD COLUMN IF NOT EXISTS key_tasks TEXT NOT NULL DEFAULT ''`);
   } catch (e) { console.warn('Không thể thêm cột key_tasks:', e.message); }
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS evaluation_unlocks (
+      id SERIAL PRIMARY KEY,
+      admin_username TEXT NOT NULL,
+      target_username TEXT NOT NULL,
+      year INT NOT NULL,
+      month INT NOT NULL,
+      field TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance (
       username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
       year INT NOT NULL,
@@ -441,18 +453,15 @@ app.get('/api/evaluations', auth, async (req, res) => {
         [req.user.department]
       );
       users = r.rows;
-    } else if (req.user.role === 'bgd') {
+    } else if (req.user.role === 'bgd' || req.user.role === 'admin') {
       const department = req.query.department;
       const params = [];
       let where = "WHERE role NOT IN ('bgd','admin')";
       if (department && department !== 'all') { params.push(department); where += ' AND department = $1'; }
       const r = await pool.query(
-        `SELECT username, fullname, role, department FROM users ${where} ORDER BY (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
+        `SELECT username, fullname, role, department FROM users ${where} ORDER BY department, (role='truong_phong') DESC, (role='pho_phong') DESC, fullname`,
         params
       );
-      users = r.rows;
-    } else if (req.user.role === 'admin') {
-      const r = await pool.query(`SELECT username, fullname, role, department FROM users WHERE role NOT IN ('admin') ORDER BY fullname`);
       users = r.rows;
     } else {
       users = [{ username: req.user.username, fullname: req.user.fullname, role: req.user.role, department: req.user.department }];
@@ -511,6 +520,7 @@ app.get('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
       submitted: record ? record.submitted : defaultEvalSubmitted(),
       keyTasks: record ? record.key_tasks : '',
       editableFields: Array.from(perm.editable),
+      canUnlock: req.user.role === 'admin',
     });
   } catch (e) {
     console.error(e);
@@ -571,6 +581,68 @@ app.put('/api/evaluations/:username/:year/:month', auth, async (req, res) => {
       [username, year, month, JSON.stringify(merged), JSON.stringify(newSubmitted), newKeyTasks]
     );
     res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  }
+});
+
+// Mở khoá một cột điểm đã chốt (chỉ admin). Điểm cũ được giữ nguyên để người chấm sửa rồi lưu lại;
+// trong thời gian cột đang mở khoá, cột đó tự bị loại khỏi điểm bình quân (vì submitted = false).
+// Mọi lần mở khoá đều được ghi vào bảng evaluation_unlocks.
+app.post('/api/evaluations/:username/:year/:month/unlock', auth, requireRole('admin'), async (req, res) => {
+  const { username, year, month } = req.params;
+  const { field, reason } = req.body || {};
+  const FIELDS = ['nld', 'ld_phong', 'pho_truong', 'truong_don_vi'];
+  if (!FIELDS.includes(field)) return res.status(400).json({ error: 'Cột điểm không hợp lệ.' });
+  const cleanReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
+  if (!cleanReason) return res.status(400).json({ error: 'Vui lòng nhập lý do mở khoá.' });
+  const y = Number(year), m = Number(month);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return res.status(400).json({ error: 'Năm/tháng không hợp lệ.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT submitted FROM evaluations WHERE username=$1 AND year=$2 AND month=$3 FOR UPDATE',
+      [username, y, m]
+    );
+    if (!rows[0] || !rows[0].submitted || !rows[0].submitted[field]) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cột điểm này chưa được chốt nên không cần mở khoá.' });
+    }
+    const newSubmitted = { ...rows[0].submitted, [field]: false };
+    await client.query(
+      'UPDATE evaluations SET submitted=$1, updated_at=now() WHERE username=$2 AND year=$3 AND month=$4',
+      [JSON.stringify(newSubmitted), username, y, m]
+    );
+    await client.query(
+      'INSERT INTO evaluation_unlocks (admin_username, target_username, year, month, field, reason) VALUES ($1,$2,$3,$4,$5,$6)',
+      [req.user.username, username, y, m, field, cleanReason]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/evaluations-unlock-log', auth, requireRole('admin'), async (req, res) => {
+  const { year, month } = req.query;
+  if (!year || !month) return res.status(400).json({ error: 'Thiếu năm/tháng.' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT l.id, l.admin_username, l.target_username, COALESCE(u.fullname, l.target_username) AS target_fullname,
+              l.year, l.month, l.field, l.reason, l.created_at
+       FROM evaluation_unlocks l LEFT JOIN users u ON u.username = l.target_username
+       WHERE l.year=$1 AND l.month=$2 ORDER BY l.created_at DESC LIMIT 200`,
+      [year, month]
+    );
+    res.json({ rows });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Lỗi máy chủ, vui lòng thử lại.' });
@@ -746,6 +818,7 @@ app.get('/api/admin/export', auth, requireRole('admin'), async (req, res) => {
       `SELECT username, year, month, days, submitted FROM attendance ORDER BY username, year, month`
     );
     res.json({ users: usersRes.rows, logs: logsRes.rows, evaluations: evalRes.rows, attendance: attRes.rows, exportedAt: new Date().toISOString() });
+    // Lưu ý: nhật ký mở khoá (evaluation_unlocks) không nằm trong file sao lưu Excel/JSON này; dữ liệu vẫn nằm trong database.
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Không thể xuất dữ liệu.' });
