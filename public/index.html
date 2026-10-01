@@ -289,6 +289,15 @@ async function api(path, options={}){
   const res = await fetch(path, Object.assign({}, options, {headers}));
   let data=null;
   try{ data = await res.json(); }catch(e){}
+  // Phiên đăng nhập hết hạn (token quá 12 giờ): tự đăng xuất và đưa về màn hình đăng nhập,
+  // thay vì để người dùng nhìn thấy dữ liệu trống như chưa từng nhập.
+  if(res.status===401 && state.token){
+    state.token=null; state.user=null;
+    localStorage.removeItem('nkcv_token'); localStorage.removeItem('nkcv_user');
+    state.loginError = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại. Dữ liệu của bạn vẫn được giữ nguyên.';
+    render();
+    throw new Error(state.loginError);
+  }
   if(!res.ok) throw new Error((data && data.error) || 'Đã xảy ra lỗi, vui lòng thử lại.');
   return data;
 }
