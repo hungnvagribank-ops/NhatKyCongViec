@@ -305,7 +305,7 @@ const state = {
   calYear: new Date().getFullYear(), calMonth: new Date().getMonth()+1, monthHasData: new Set(),
   reportFrom: todayISO(), reportTo: todayISO(), reportDept:'all', reportRows:[], departments:[], reportLoading:false, reportExpanded: new Set(),
   evalYear: new Date().getFullYear(), evalMonth: new Date().getMonth()+1, evalSubTab:'self',
-  evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{}, unlockLog: [],
+  evalListRows: [], evalListDept:'all', evalListLoading:false, evalExpanded: new Set(), evalCache: {}, evalSelfLoading:false, evalFlash:{}, unlockLog: [], unlockRequests: [],
   attYear: new Date().getFullYear(), attMonth: new Date().getMonth()+1, attSubTab:'self',
   attSelfData: null, attListRows: [], attListDept:'all', attListLoading:false, attFlash:'',
   users:[], userModal:null, /* null | {mode:'add'} | {mode:'edit', data:{...}} */ userModalError:'',
@@ -898,7 +898,7 @@ async function bootEvalTab(){
   } else if(state.user.role==='bgd'){
     await loadEvalList();
   } else if(state.user.role==='admin'){
-    await Promise.all([loadEvalList(), loadUnlockLog()]);
+    await Promise.all([loadEvalList(), loadUnlockLog(), loadUnlockRequests()]);
   } else {
     await loadEvalDetail(state.user.username);
   }
@@ -911,6 +911,64 @@ async function loadUnlockLog(){
   }catch(e){ state.unlockLog = []; }
 }
 
+async function loadUnlockRequests(){
+  try{
+    const data = await api('/api/evaluations-unlock-requests');
+    state.unlockRequests = data.rows || [];
+  }catch(e){ state.unlockRequests = []; }
+}
+
+async function requestUnlock(username){
+  const reason = prompt('Nhập lý do xin chỉnh sửa điểm đã chốt (ví dụ: chấm nhầm tiêu chí số 2):');
+  if(reason===null) return;
+  if(!reason.trim()){ alert('Vui lòng nhập lý do.'); return; }
+  try{
+    await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}/request-unlock`, {method:'POST', body: JSON.stringify({reason: reason.trim()})});
+    await loadEvalDetail(username);
+    alert('Đã gửi yêu cầu. Vui lòng chờ admin duyệt, sau đó bạn có thể sửa và lưu lại điểm.');
+    renderEvaluation();
+  }catch(e){ alert(e.message); }
+}
+
+async function resolveUnlockRequest(id, action){
+  const req = state.unlockRequests.find(r=>String(r.id)===String(id));
+  if(action==='approve' && !confirm('Mở khoá cột điểm này cho người chấm sửa lại?')) return;
+  if(action==='reject' && !confirm('Từ chối yêu cầu này?')) return;
+  try{
+    await api(`/api/evaluations-unlock-requests/${encodeURIComponent(id)}/${action}`, {method:'POST'});
+    if(req){
+      delete state.evalCache[req.target_username];
+      if(state.evalExpanded.has(req.target_username)) await loadEvalDetail(req.target_username);
+    }
+    await Promise.all([loadEvalList(), loadUnlockLog(), loadUnlockRequests()]);
+    renderEvaluation();
+  }catch(e){
+    alert(e.message);
+    await Promise.all([loadUnlockRequests(), loadEvalList()]);
+    renderEvaluation();
+  }
+}
+
+function renderUnlockRequestsHtml(){
+  const rows = state.unlockRequests || [];
+  if(rows.length===0) return `<div class="eval-lock-banner" style="margin:0 0 16px;">Không có yêu cầu chỉnh sửa nào đang chờ duyệt.</div>`;
+  const body = rows.map(r=>`<tr>
+      <td>${esc(new Date(r.created_at).toLocaleString('vi-VN'))}</td>
+      <td>${esc(r.requester_fullname)}</td>
+      <td>${esc(r.target_fullname)} <span style="color:var(--ink-soft);">· T${r.month}/${r.year}</span></td>
+      <td>${esc(EVAL_FIELD_LABEL[r.field]||r.field)}</td>
+      <td>${esc(r.reason)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn--primary btn--sm" style="width:auto;" data-req-approve="${r.id}">Mở khoá</button>
+        <button class="btn btn--ghost btn--sm" data-req-reject="${r.id}">Từ chối</button>
+      </td>
+    </tr>`).join('');
+  return `<div style="margin:0 0 24px;">
+    <h3 class="section-title" style="font-size:15px;">Yêu cầu chỉnh sửa đang chờ duyệt (${rows.length})</h3>
+    <table class="data-table"><thead><tr><th>Gửi lúc</th><th>Người xin</th><th>Phiếu của</th><th>Cột điểm</th><th>Lý do</th><th></th></tr></thead><tbody>${body}</tbody></table>
+  </div>`;
+}
+
 const EVAL_FIELD_LABEL = {nld:'NLĐ tự đánh giá', ld_phong:'LĐ phòng', pho_truong:'Phó trưởng đơn vị', truong_don_vi:'Trưởng đơn vị'};
 
 async function unlockEval(username, field){
@@ -919,7 +977,7 @@ async function unlockEval(username, field){
   if(!reason.trim()){ alert('Vui lòng nhập lý do mở khoá.'); return; }
   try{
     await api(`/api/evaluations/${encodeURIComponent(username)}/${state.evalYear}/${state.evalMonth}/unlock`, {method:'POST', body: JSON.stringify({field, reason: reason.trim()})});
-    await Promise.all([loadEvalDetail(username), loadEvalList(), loadUnlockLog()]);
+    await Promise.all([loadEvalDetail(username), loadEvalList(), loadUnlockLog(), loadUnlockRequests()]);
     renderEvaluation();
   }catch(e){ alert(e.message); }
 }
@@ -974,7 +1032,7 @@ function renderEvaluation(){
   } else if(role==='bgd'){
     bodyHtml = renderEvalListHtml();
   } else if(role==='admin'){
-    bodyHtml = renderEvalListHtml() + renderUnlockLogHtml();
+    bodyHtml = renderUnlockRequestsHtml() + renderEvalListHtml() + renderUnlockLogHtml();
   } else {
     bodyHtml = renderEvalFormHtml(state.user.username);
   }
@@ -990,6 +1048,8 @@ function renderEvaluation(){
   if(exportBtn) exportBtn.addEventListener('click', exportEvalExcel);
   bindEvalTopControls();
   bindEvalListEvents();
+  document.querySelectorAll('[data-req-approve]').forEach(b=>b.addEventListener('click', ()=>resolveUnlockRequest(b.dataset.reqApprove,'approve')));
+  document.querySelectorAll('[data-req-reject]').forEach(b=>b.addEventListener('click', ()=>resolveUnlockRequest(b.dataset.reqReject,'reject')));
   document.querySelectorAll('.eval-form-wrap').forEach(el=>bindEvalFormEvents(el.dataset.evalFormUser));
 }
 
@@ -1145,7 +1205,11 @@ function renderEvalFormHtml(username){
           ${['nld','ld_phong','pho_truong','truong_don_vi'].filter(f=>!(f==='ld_phong' && isMgr)).map(f=>`
             <span class="eval-badge ${submitted[f]?'done':''}">${EVAL_FIELD_LABEL[f]}: ${submitted[f]?'Đã chấm':'Chưa chấm'}${(data.canUnlock && submitted[f]) ? ` <button class="btn btn--ghost btn--sm" style="padding:1px 8px;margin-left:6px;" data-unlock-user="${esc(username)}" data-unlock-field="${f}">🔓 Mở khoá</button>` : ''}</span>`).join('')}
         </div>
-        ${isLocked && ownField ? `<div class="eval-lock-banner">🔒 Điểm của bạn cho phiếu này đã được lưu và chốt — không thể chỉnh sửa nữa.</div>` : ''}
+        ${isLocked && ownField ? `<div class="eval-lock-banner">🔒 Điểm của bạn cho phiếu này đã được lưu và chốt. Nếu cần sửa, hãy gửi yêu cầu để admin mở khoá.
+          ${data.pendingRequest
+            ? `<div style="margin-top:8px;"><b>⏳ Đã gửi yêu cầu chỉnh sửa — đang chờ admin duyệt.</b></div>`
+            : `<div style="margin-top:8px;"><button class="btn btn--ghost btn--sm" data-request-unlock="${esc(username)}">✏️ Xin chỉnh sửa</button></div>`}
+        </div>` : ''}
       </div>
       <div class="eval-tasks-box">
         <div class="eval-tasks-title">Các công việc trọng tâm trong tháng</div>
@@ -1216,6 +1280,9 @@ function bindEvalFormEvents(username){
   if(tasksInput) tasksInput.addEventListener('input', ()=>{ data.keyTasks = tasksInput.value; });
   const saveBtn = wrap.querySelector('[data-eval-save]');
   if(saveBtn) saveBtn.addEventListener('click', ()=>saveEvalForm(username));
+  wrap.querySelectorAll('[data-request-unlock]').forEach(btn=>{
+    btn.addEventListener('click', ()=>requestUnlock(btn.dataset.requestUnlock));
+  });
   wrap.querySelectorAll('[data-unlock-field]').forEach(btn=>{
     btn.addEventListener('click', ()=>unlockEval(btn.dataset.unlockUser, btn.dataset.unlockField));
   });
